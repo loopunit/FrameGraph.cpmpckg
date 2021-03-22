@@ -79,14 +79,14 @@ struct mu_gfx_impl : public mu_gfx_interface
 
 	virtual mu::leaf::result<void> begin_frame() noexcept
 	{
-        create_resources();
-        return {};
+		create_resources();
+		return {};
 	}
 
 	virtual mu::leaf::result<void> end_frame() noexcept
 	{
-        render();
-        present();
+		render();
+		present();
 		return {};
 	}
 
@@ -105,6 +105,7 @@ struct mu_gfx_impl : public mu_gfx_interface
 	Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_pImmediateContext;
 	Diligent::RefCntAutoPtr<Diligent::ISwapChain>	  m_pSwapChain;
 	Diligent::RefCntAutoPtr<Diligent::IPipelineState> m_pPSO;
+	bool											  m_resize_requested = false;
 
 	void show_window()
 	{
@@ -113,67 +114,74 @@ struct mu_gfx_impl : public mu_gfx_interface
 
 	void create_resources()
 	{
-		if (m_pPSO)
-        {
-            return;
-        }
-
-        // Pipeline state object encompasses configuration of all GPU stages
-
-		Diligent::GraphicsPipelineStateCreateInfo PSOCreateInfo;
-
-		// Pipeline state name is used by the engine to report issues.
-		// It is always a good idea to give objects descriptive names.
-		PSOCreateInfo.PSODesc.Name = "Simple triangle PSO";
-
-		// This is a graphics pipeline
-		PSOCreateInfo.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
-
-		// clang-format off
-        // This tutorial will render to a single render target
-        PSOCreateInfo.GraphicsPipeline.NumRenderTargets             = 1;
-        // Set render target format which is the format of the swap chain's color buffer
-        PSOCreateInfo.GraphicsPipeline.RTVFormats[0]                = m_pSwapChain->GetDesc().ColorBufferFormat;
-        // Use the depth buffer format from the swap chain
-        PSOCreateInfo.GraphicsPipeline.DSVFormat                    = m_pSwapChain->GetDesc().DepthBufferFormat;
-        // Primitive topology defines what kind of primitives will be rendered by this pipeline state
-        PSOCreateInfo.GraphicsPipeline.PrimitiveTopology            = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        // No back face culling for this tutorial
-        PSOCreateInfo.GraphicsPipeline.RasterizerDesc.CullMode      = Diligent::CULL_MODE_NONE;
-        // Disable depth testing
-        PSOCreateInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = Diligent::False;
-		// clang-format on
-
-		Diligent::ShaderCreateInfo ShaderCI;
-		// Tell the system that the shader source code is in HLSL.
-		// For OpenGL, the engine will convert this into GLSL under the hood
-		ShaderCI.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
-		// OpenGL backend requires emulated combined HLSL texture samplers (g_Texture + g_Texture_sampler combination)
-		ShaderCI.UseCombinedTextureSamplers = true;
-		// Create a vertex shader
-		Diligent::RefCntAutoPtr<Diligent::IShader> pVS;
+		if (!m_pPSO)
 		{
-			ShaderCI.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
-			ShaderCI.EntryPoint		 = "main";
-			ShaderCI.Desc.Name		 = "Triangle vertex shader";
-			ShaderCI.Source			 = VSSource;
-			m_pDevice->CreateShader(ShaderCI, &pVS);
+			// Pipeline state object encompasses configuration of all GPU stages
+
+			Diligent::GraphicsPipelineStateCreateInfo PSOCreateInfo;
+
+			// Pipeline state name is used by the engine to report issues.
+			// It is always a good idea to give objects descriptive names.
+			PSOCreateInfo.PSODesc.Name = "Simple triangle PSO";
+
+			// This is a graphics pipeline
+			PSOCreateInfo.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
+
+			// clang-format off
+			// This tutorial will render to a single render target
+			PSOCreateInfo.GraphicsPipeline.NumRenderTargets             = 1;
+			// Set render target format which is the format of the swap chain's color buffer
+			PSOCreateInfo.GraphicsPipeline.RTVFormats[0]                = m_pSwapChain->GetDesc().ColorBufferFormat;
+			// Use the depth buffer format from the swap chain
+			PSOCreateInfo.GraphicsPipeline.DSVFormat                    = m_pSwapChain->GetDesc().DepthBufferFormat;
+			// Primitive topology defines what kind of primitives will be rendered by this pipeline state
+			PSOCreateInfo.GraphicsPipeline.PrimitiveTopology            = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+			// No back face culling for this tutorial
+			PSOCreateInfo.GraphicsPipeline.RasterizerDesc.CullMode      = Diligent::CULL_MODE_NONE;
+			// Disable depth testing
+			PSOCreateInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = Diligent::False;
+			// clang-format on
+
+			Diligent::ShaderCreateInfo ShaderCI;
+			// Tell the system that the shader source code is in HLSL.
+			// For OpenGL, the engine will convert this into GLSL under the hood
+			ShaderCI.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
+			// OpenGL backend requires emulated combined HLSL texture samplers (g_Texture + g_Texture_sampler combination)
+			ShaderCI.UseCombinedTextureSamplers = true;
+			// Create a vertex shader
+			Diligent::RefCntAutoPtr<Diligent::IShader> pVS;
+			{
+				ShaderCI.Desc.ShaderType = Diligent::SHADER_TYPE_VERTEX;
+				ShaderCI.EntryPoint		 = "main";
+				ShaderCI.Desc.Name		 = "Triangle vertex shader";
+				ShaderCI.Source			 = VSSource;
+				m_pDevice->CreateShader(ShaderCI, &pVS);
+			}
+
+			// Create a pixel shader
+			Diligent::RefCntAutoPtr<Diligent::IShader> pPS;
+			{
+				ShaderCI.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
+				ShaderCI.EntryPoint		 = "main";
+				ShaderCI.Desc.Name		 = "Triangle pixel shader";
+				ShaderCI.Source			 = PSSource;
+				m_pDevice->CreateShader(ShaderCI, &pPS);
+			}
+
+			// Finally, create the pipeline state
+			PSOCreateInfo.pVS = pVS;
+			PSOCreateInfo.pPS = pPS;
+			m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &m_pPSO);
 		}
 
-		// Create a pixel shader
-		Diligent::RefCntAutoPtr<Diligent::IShader> pPS;
+		if (m_resize_requested)
 		{
-			ShaderCI.Desc.ShaderType = Diligent::SHADER_TYPE_PIXEL;
-			ShaderCI.EntryPoint		 = "main";
-			ShaderCI.Desc.Name		 = "Triangle pixel shader";
-			ShaderCI.Source			 = PSSource;
-			m_pDevice->CreateShader(ShaderCI, &pPS);
+			//int w, h;
+			//glfwGetWindowSize(m_window, &w, &h);
+			int display_w, display_h;
+			glfwGetFramebufferSize(m_window, &display_w, &display_h);
+			m_pSwapChain->Resize(display_w, display_h);
 		}
-
-		// Finally, create the pipeline state
-		PSOCreateInfo.pVS = pVS;
-		PSOCreateInfo.pPS = pPS;
-		m_pDevice->CreateGraphicsPipelineState(PSOCreateInfo, &m_pPSO);
 	}
 
 	void render()
@@ -201,16 +209,10 @@ struct mu_gfx_impl : public mu_gfx_interface
 		m_pImmediateContext->Draw(drawAttrs);
 	}
 
-    void present()
-    {
-        m_pSwapChain->Present();
-    }
-
-    void window_resize(uint32_t Width, uint32_t Height)
-    {
-        if (m_pSwapChain)
-            m_pSwapChain->Resize(Width, Height);
-    }
+	void present()
+	{
+		m_pSwapChain->Present();
+	}
 
 	mu::leaf::result<void> init(int posX, int posY, int sizeX, int sizeY) noexcept
 	{
@@ -233,11 +235,30 @@ struct mu_gfx_impl : public mu_gfx_interface
 		Diligent::Win32NativeWindow Window{glfwGetWin32Window(m_window)};
 		pFactoryD3D12->CreateSwapChainD3D12(m_pDevice, m_pImmediateContext, SCDesc, Diligent::FullScreenModeDesc{}, Window, &m_pSwapChain);
 
+		glfwSetWindowSizeCallback(
+			m_window,
+			[](GLFWwindow* window, int a, int b) -> void
+			{
+				singleton()->m_resize_requested = true;
+			});
+
+		glfwSetWindowCloseCallback(
+			m_window,
+			[](GLFWwindow* window) -> void
+			{
+				//viewport->PlatformRequestClose = true;
+			});
+
 		return {};
 	}
 
 	void destroy_window()
 	{
+		m_pSwapChain.Release();
+		m_pPSO.Release();
+		m_pImmediateContext.Release();
+		m_pDevice.Release();
+
 		glfwDestroyWindow(m_window);
 		m_window = nullptr;
 	}
@@ -247,9 +268,3 @@ struct mu_gfx_impl : public mu_gfx_interface
 
 MU_DEFINE_VIRTUAL_SINGLETON(mu_gfx_interface, mu_gfx_impl);
 MU_EXPORT_SINGLETON(mu_gfx);
-
-#if 0
-			
-			
-
-#endif

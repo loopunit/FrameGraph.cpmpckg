@@ -12,22 +12,22 @@ namespace mu
 
 	struct diligent_globals
 	{
-		Diligent::RefCntAutoPtr<Diligent::IRenderDevice>	   m_pDevice;
-		Diligent::RefCntAutoPtr<Diligent::IDeviceContext>	   m_pImmediateContext;
+		Diligent::RefCntAutoPtr<Diligent::IRenderDevice> m_pDevice;
+		// Diligent::RefCntAutoPtr<Diligent::IDeviceContext>	   m_pImmediateContext;
 		Diligent::RefCntAutoPtr<Diligent::IEngineFactoryD3D12> m_pFactory;
 
 		diligent_globals()
 		{
-			Diligent::EngineD3D12CreateInfo EngineCI;
+			//Diligent::EngineD3D12CreateInfo EngineCI;
 			m_pFactory = Diligent::GetEngineFactoryD3D12();
-			m_pFactory->CreateDeviceAndContextsD3D12(EngineCI, &m_pDevice, &m_pImmediateContext);
+			// m_pFactory->CreateDeviceAndContextsD3D12(EngineCI, &m_pDevice, &m_pImmediateContext);
 		}
 
 		~diligent_globals()
 		{
 			try
 			{
-				m_pImmediateContext.Release();
+				// m_pImmediateContext.Release();
 			}
 			catch (...)
 			{
@@ -56,8 +56,9 @@ namespace mu
 
 	struct diligent_window
 	{
-		std::shared_ptr<diligent_globals>			  m_globals;
-		Diligent::RefCntAutoPtr<Diligent::ISwapChain> m_pSwapChain;
+		std::shared_ptr<diligent_globals>				  m_globals;
+		Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_pImmediateContext;
+		Diligent::RefCntAutoPtr<Diligent::ISwapChain>	  m_pSwapChain;
 
 		auto create_resources(int sizeX, int sizeY) noexcept -> mu::leaf::result<void>
 		try
@@ -82,14 +83,14 @@ namespace mu
 			// Note that Present() unbinds the back buffer if it is set as render target.
 			Diligent::ITextureView* last_backbuffer_rtv	 = m_pSwapChain->GetCurrentBackBufferRTV();
 			Diligent::ITextureView* last_depthbuffer_rtv = m_pSwapChain->GetDepthBufferDSV();
-			m_globals->m_pImmediateContext->SetRenderTargets(1, &last_backbuffer_rtv, last_depthbuffer_rtv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_pImmediateContext->SetRenderTargets(1, &last_backbuffer_rtv, last_depthbuffer_rtv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
 			// Clear the back buffer
 			const float ClearColor[] = {0.350f, 0.350f, 0.350f, 1.000f};
 
 			// Let the engine perform required state transitions
-			m_globals->m_pImmediateContext->ClearRenderTarget(last_backbuffer_rtv, ClearColor, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-			m_globals->m_pImmediateContext->ClearDepthStencil(last_depthbuffer_rtv, Diligent::CLEAR_DEPTH_FLAG, 1.f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_pImmediateContext->ClearRenderTarget(last_backbuffer_rtv, ClearColor, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_pImmediateContext->ClearDepthStencil(last_depthbuffer_rtv, Diligent::CLEAR_DEPTH_FLAG, 1.f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
 			return {};
 		}
@@ -112,10 +113,13 @@ namespace mu
 		diligent_window(Diligent::Win32NativeWindow native_wnd, std::shared_ptr<diligent_globals> globals)
 		{
 			m_globals = globals;
+			
+			Diligent::EngineD3D12CreateInfo EngineCI;
+			m_globals->m_pFactory->CreateDeviceAndContextsD3D12(EngineCI, &m_globals->m_pDevice, &m_pImmediateContext);
+			//m_pImmediateContext = m_globals->m_pImmediateContext;
 
 			Diligent::SwapChainDesc SCDesc;
-			m_globals->m_pFactory->CreateSwapChainD3D12(
-				m_globals->m_pDevice, m_globals->m_pImmediateContext, SCDesc, Diligent::FullScreenModeDesc{}, native_wnd, &m_pSwapChain);
+			m_globals->m_pFactory->CreateSwapChainD3D12(m_globals->m_pDevice, m_pImmediateContext, SCDesc, Diligent::FullScreenModeDesc{}, native_wnd, &m_pSwapChain);
 		}
 
 		~diligent_window()
@@ -124,4 +128,4 @@ namespace mu
 			m_globals.reset();
 		}
 	};
-}
+} // namespace mu

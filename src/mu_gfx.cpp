@@ -211,7 +211,7 @@ namespace mu
 				{
 					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
 					ImGui::Render();
-					m_imgui_context->m_imgui_renderer->RenderDrawData(m_renderer_globals->m_pImmediateContext, ImGui::GetDrawData());
+					m_imgui_context->m_imgui_renderer->RenderDrawData(m_diligent_window->m_pImmediateContext, ImGui::GetDrawData());
 					ImGui::EndFrame();
 					return {};
 				}

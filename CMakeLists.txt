@@ -95,7 +95,7 @@ if(MU_GFX_BUILD_TESTS)
 	add_executable(mu_gfx_test
 		${test_sources})
 
-	set_target_properties(mu_gfx_test PROPERTIES CXX_STANDARD 17)
+	set_target_properties(mu_gfx_test PROPERTIES CXX_STANDARD 20)
 
 	target_include_directories(mu_gfx_test 
 		PRIVATE 

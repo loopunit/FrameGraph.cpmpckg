@@ -261,7 +261,7 @@ namespace mu
 						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 					}
 
-					MU_LEAF_CHECK(m_diligent_window->create_resources(float(m_display_size[0]), float(m_display_size[1])));
+					MU_LEAF_CHECK(m_diligent_window->create_resources(m_display_size[0], m_display_size[1]));
 					MU_LEAF_CHECK(m_diligent_window->clear());
 					return {};
 				}

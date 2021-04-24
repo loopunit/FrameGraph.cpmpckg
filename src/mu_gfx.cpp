@@ -46,16 +46,6 @@ namespace mu
 					}
 				}
 			}
-
-			auto get_renderer_globals() noexcept -> std::shared_ptr<diligent_globals>
-			{
-				auto system_ref = (m_renderer_globals.expired()) ? std::make_shared<diligent_globals>() : m_renderer_globals.lock();
-				if (m_renderer_globals.expired()) [[unlikely]]
-				{
-					m_renderer_globals = system_ref;
-				}
-				return system_ref;
-			}
 		};
 	} // namespace details
 } // namespace mu
@@ -217,56 +207,63 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			virtual auto begin_frame() noexcept -> mu::leaf::result<void>
+			auto init_resources() noexcept -> mu::leaf::result<void>
 			{
 				if (!m_renderer_globals) [[unlikely]]
 				{
-					m_renderer_globals = m_glfw_system->get_renderer_globals();
-				}
-
-				if (m_renderer_globals) [[likely]]
-				{
-					if (!m_diligent_window) [[unlikely]]
+					try
 					{
-						try
-						{
-							m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window)}, m_renderer_globals);
-							m_imgui_context	  = std::make_shared<imgui_context>(m_diligent_window);
-						}
-						catch (...)
-						{
-							return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-						}
+						m_renderer_globals = std::make_shared<diligent_globals>();
 					}
-
-					if (m_diligent_window) [[likely]]
-					{
-						int display_w, display_h;
-						try
-						{
-							glfwGetFramebufferSize(m_window, &display_w, &display_h);
-						}
-						catch (...)
-						{
-							return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-						}
-
-						m_diligent_window->create_resources(display_w, display_h);
-						m_diligent_window->clear();
-						ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
-
-						ImGuiIO& io	   = ImGui::GetIO();
-						io.DisplaySize = ImVec2(float(display_w), float(display_h));
-
-						m_imgui_context->m_imgui_renderer->NewFrame(display_w, display_h, Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL);
-						ImGui::NewFrame();
-
-						return {};
-					}
-					else
+					catch (...)
 					{
 						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 					}
+				}
+
+				if (!m_diligent_window) [[unlikely]]
+				{
+					try
+					{
+						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window)}, m_renderer_globals);
+						m_imgui_context	  = std::make_shared<imgui_context>(m_diligent_window);
+					}
+					catch (...)
+					{
+						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+					}
+				}
+
+				return {};
+			}
+
+			virtual auto begin_frame() noexcept -> mu::leaf::result<void>
+			{
+				MU_LEAF_CHECK(init_resources());
+
+				if (m_diligent_window) [[likely]]
+				{
+					int display_w, display_h;
+					try
+					{
+						glfwGetFramebufferSize(m_window, &display_w, &display_h);
+					}
+					catch (...)
+					{
+						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+					}
+
+					m_diligent_window->create_resources(display_w, display_h);
+					m_diligent_window->clear();
+					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
+
+					ImGuiIO& io	   = ImGui::GetIO();
+					io.DisplaySize = ImVec2(float(display_w), float(display_h));
+
+					m_imgui_context->m_imgui_renderer->NewFrame(display_w, display_h, Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL);
+					ImGui::NewFrame();
+
+					return {};
 				}
 				else
 				{

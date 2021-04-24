@@ -4,8 +4,7 @@ static auto all_error_handlers = std::tuple_cat(mu::error_handlers, mu::only_gfx
 
 auto main(int, char**) -> int
 {
-	if (
-		auto app_error = []() -> mu::leaf::result<void>
+	if (auto app_error = []() -> mu::leaf::result<void>
 		{
 			auto logger = mu::debug::logger()->stdout_logger();
 			logger->info("Hello world");
@@ -21,48 +20,51 @@ auto main(int, char**) -> int
 
 			while (windows.size() > 0)
 			{
-				MU_LEAF_CHECK(mu::gfx()->pump());
-				auto end_frame = sg::make_scope_guard(
-					[]() noexcept -> void
+				MU_LEAF_CHECK(mu::gfx_do_frame(
+					[&]() noexcept -> mu::leaf::result<void>
 					{
-						if (auto err = mu::gfx()->present(); !err) [[unlikely]]
+						for (auto itor = windows.begin(); itor != windows.end();)
 						{
-							// TODO: log err.error();
-						}
-					});
-
-				for (auto itor = windows.begin(); itor != windows.end();)
-				{
-					auto& wwnd = *itor;
-					if (wwnd)
-					{
-						MU_LEAF_AUTO(wants_to_close, wwnd->wants_to_close());
-
-						if (!wants_to_close) [[likely]]
-						{
-							if (wwnd->begin_frame()) [[likely]]
+							auto& wwnd = *itor;
+							if (wwnd)
 							{
-								auto end_frame = sg::make_scope_guard(
-									[&wwnd]() noexcept -> void
-									{
-										if (auto err = wwnd->end_frame(); !err)[[unlikely]]
+								MU_LEAF_AUTO(wants_to_close, wwnd->wants_to_close());
+
+								if (!wants_to_close) [[likely]]
+								{
+									MU_LEAF_CHECK(mu::gfx_do_window(
+										*wwnd,
+										[&wwnd]() -> mu::leaf::result<void>
 										{
-											// TODO: log err.error();
-										}
-									});
-								MU_LEAF_CHECK(wwnd->test());
+											return mu::gfx_do_imgui(
+												*wwnd,
+												[]() -> mu::leaf::result<void>
+												{
+													try
+													{
+														ImGui::ShowDemoWindow();
+														return {};
+													}
+													catch (...)
+													{
+														return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+													}
+												});
+										}));
+									++itor;
+								}
+								else
+								{
+									itor = windows.erase(itor);
+								}
 							}
-							++itor;
 						}
-						else
-						{
-							itor = windows.erase(itor);
-						}
-					}
-				}
+						return {};
+					}));
 			}
 			return {};
-		}(); !app_error) [[unlikely]]
+		}();
+		!app_error) [[unlikely]]
 	{
 		return app_error.get_error_id().value();
 	}

@@ -113,6 +113,7 @@ namespace mu
 			std::shared_ptr<diligent_window>  m_diligent_window;
 			std::shared_ptr<diligent_globals> m_renderer_globals;
 			std::shared_ptr<imgui_context>	  m_imgui_context;
+			std::array<int, 2>				  m_display_size{0, 0};
 
 			auto create_window(int posX, int posY, int sizeX, int sizeY) noexcept -> leaf::result<GLFWwindow*>
 			try
@@ -123,6 +124,14 @@ namespace mu
 					try
 					{
 						glfwSetWindowPos(wnd, posX, posY);
+						try
+						{
+							glfwGetFramebufferSize(wnd, &m_display_size[0], &m_display_size[1]);
+						}
+						catch (...)
+						{
+							return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+						}
 						return wnd;
 					}
 					catch (...)
@@ -243,26 +252,17 @@ namespace mu
 
 				if (m_diligent_window) [[likely]]
 				{
-					int display_w, display_h;
 					try
 					{
-						glfwGetFramebufferSize(m_window, &display_w, &display_h);
+						glfwGetFramebufferSize(m_window, &m_display_size[0], &m_display_size[1]);
 					}
 					catch (...)
 					{
 						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 					}
 
-					m_diligent_window->create_resources(display_w, display_h);
-					m_diligent_window->clear();
-					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
-
-					ImGuiIO& io	   = ImGui::GetIO();
-					io.DisplaySize = ImVec2(float(display_w), float(display_h));
-
-					m_imgui_context->m_imgui_renderer->NewFrame(display_w, display_h, Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL);
-					ImGui::NewFrame();
-
+					MU_LEAF_CHECK(m_diligent_window->create_resources(float(m_display_size[0]), float(m_display_size[1])));
+					MU_LEAF_CHECK(m_diligent_window->clear());
 					return {};
 				}
 				else
@@ -277,12 +277,33 @@ namespace mu
 				return {};
 			}
 
-			virtual auto test() noexcept -> mu::leaf::result<void>
+			virtual auto begin_imgui() noexcept -> mu::leaf::result<void>
 			{
 				try
 				{
 					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
-					ImGui::ShowDemoWindow();
+
+					ImGuiIO& io	   = ImGui::GetIO();
+					io.DisplaySize = ImVec2(float(m_display_size[0]), float(m_display_size[1]));
+
+					m_imgui_context->m_imgui_renderer->NewFrame(m_display_size[0], m_display_size[1], Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL);
+					ImGui::NewFrame();
+					return {};
+				}
+				catch (...)
+				{
+					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+				}
+			}
+
+			virtual auto end_imgui() noexcept -> mu::leaf::result<void>
+			{
+				try
+				{
+					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
+					ImGui::Render();
+					m_imgui_context->m_imgui_renderer->RenderDrawData(m_diligent_window->m_pImmediateContext, ImGui::GetDrawData());
+					ImGui::EndFrame();
 					return {};
 				}
 				catch (...)
@@ -294,10 +315,6 @@ namespace mu
 			virtual auto end_frame() noexcept -> mu::leaf::result<void>
 			try
 			{
-				ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
-				ImGui::Render();
-				m_imgui_context->m_imgui_renderer->RenderDrawData(m_diligent_window->m_pImmediateContext, ImGui::GetDrawData());
-				ImGui::EndFrame();
 				return {};
 			}
 			catch (...)

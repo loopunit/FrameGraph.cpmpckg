@@ -60,6 +60,12 @@ namespace mu
 		std::shared_ptr<diligent_globals>				  m_globals;
 		Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_pImmediateContext;
 		Diligent::RefCntAutoPtr<Diligent::ISwapChain>	  m_pSwapChain;
+		float											  m_dpi_scale{1.0f};
+
+		auto get_dpi_scale() noexcept -> float
+		{
+			return m_dpi_scale;
+		}
 
 		auto create_resources(int sizeX, int sizeY) noexcept -> mu::leaf::result<void>
 		try
@@ -111,7 +117,7 @@ namespace mu
 			return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 		}
 
-		diligent_window(Diligent::Win32NativeWindow native_wnd, std::shared_ptr<diligent_globals> globals)
+		diligent_window(Diligent::Win32NativeWindow native_wnd, std::shared_ptr<diligent_globals> globals, float dpi_scale) : m_dpi_scale(dpi_scale)
 		{
 			m_globals = globals;
 

@@ -243,23 +243,28 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		io.BackendRendererName = "imgui_renderer";
 		io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
 
-		create_device_objects(scale, true);
+		MU_LEAF_RETHROW(create_device_objects(scale, true));
 	}
 
 	imgui_renderer::~imgui_renderer() { }
 
-	void imgui_renderer::new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pre_transform, float scale)
+	auto imgui_renderer::new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pre_transform, float scale) noexcept
+		-> mu::leaf::result<void>
 	{
-		create_device_objects(scale, false);
+		MU_LEAF_CHECK(create_device_objects(scale, false));
 
 		m_render_surface_width	= render_surface_width;
 		m_render_surface_height = render_surface_height;
 		m_surface_pre_transform = surface_pre_transform;
+		return {};
 	}
 
-	void imgui_renderer::end_frame() { }
+	auto imgui_renderer::end_frame() noexcept -> mu::leaf::result<void>
+	{
+		return {};
+	}
 
-	void imgui_renderer::invalidate_device_objects()
+	auto imgui_renderer::invalidate_device_objects() noexcept -> mu::leaf::result<void>
 	{
 		m_vertex_buffer.Release();
 		m_index_buffer.Release();
@@ -267,26 +272,29 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		m_pso.Release();
 		m_font_srv.Release();
 		m_srb.Release();
+
+		return {};
 	}
 
-	void imgui_renderer::invalidate_font_objects()
+	auto imgui_renderer::invalidate_font_objects() noexcept -> mu::leaf::result<void>
 	{
 		m_font_srv.Release();
+		return {};
 	}
 
-	void imgui_renderer::create_device_objects(float scale, bool force)
+	auto imgui_renderer::create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>
 	{
 		bool assets_exist  = m_pso;
 		bool scale_matches = scale == m_scale;
 
 		if (!force && assets_exist && scale_matches) [[likely]]
 		{
-			return;
+			return {};
 		}
 
 		if (force || !assets_exist)
 		{
-			invalidate_device_objects();
+			MU_LEAF_CHECK(invalidate_device_objects());
 
 			ShaderCreateInfo shader_ci;
 			shader_ci.UseCombinedTextureSamplers = true;
@@ -424,13 +432,15 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		}
 		else if (!scale_matches)
 		{
-			invalidate_font_objects();
+			MU_LEAF_CHECK(invalidate_font_objects());
 		}
 
-		create_fonts_texture(scale);
+		MU_LEAF_CHECK(create_fonts_texture(scale));
+
+		return {};
 	}
 
-	void imgui_renderer::create_fonts_texture(float scale)
+	auto imgui_renderer::create_fonts_texture(float scale) noexcept -> mu::leaf::result<void>
 	{
 		// Build texture atlas
 		ImGuiIO& io = ImGui::GetIO();
@@ -468,6 +478,8 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		io.Fonts->TexID = (ImTextureID)m_font_srv;
 
 		m_scale = scale;
+
+		return {};
 	}
 
 	float4 imgui_renderer::transform_clip_rect(const ImVec2& display_size, const float4& rect) const
@@ -580,12 +592,12 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		}
 	}
 
-	void imgui_renderer::render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data)
+	auto imgui_renderer::render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 	{
 		// Avoid rendering when minimized
 		if (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f)
 		{
-			return;
+			return {};
 		}
 
 		// Create and grow vertex/index buffers if needed
@@ -754,6 +766,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 						(im_cmd->ClipRect.z - draw_data->DisplayPos.x) * draw_data->FramebufferScale.x,
 						(im_cmd->ClipRect.w - draw_data->DisplayPos.y) * draw_data->FramebufferScale.y //
 					};
+
 					// Apply pretransform
 					clip_rect = transform_clip_rect(draw_data->DisplaySize, clip_rect);
 
@@ -787,6 +800,8 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 			global_idx_offset += cmd_list->IdxBuffer.Size;
 			global_vtx_offset += cmd_list->VtxBuffer.Size;
 		}
+
+		return {};
 	}
 
 } // namespace Diligent

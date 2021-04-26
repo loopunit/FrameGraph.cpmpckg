@@ -1,5 +1,7 @@
 #pragma once
 
+#include <mu_stdlib.h>
+
 #include <Graphics/GraphicsEngineD3D12/interface/EngineFactoryD3D12.h>
 #include <Graphics/GraphicsEngine/interface/RenderDevice.h>
 #include <Graphics/GraphicsEngine/interface/DeviceContext.h>
@@ -61,7 +63,7 @@ namespace mu
 		Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_immediate_context;
 		Diligent::RefCntAutoPtr<Diligent::ISwapChain>	  m_swap_chain;
 
-		auto create_resources(int sizeX, int sizeY) noexcept -> mu::leaf::result<void>
+		[[nodiscard]] auto create_resources(int sizeX, int sizeY) noexcept -> mu::leaf::result<void>
 		try
 		{
 			const auto& swapchain_desc = m_swap_chain->GetDesc();
@@ -77,7 +79,7 @@ namespace mu
 			return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 		}
 
-		auto clear() noexcept -> mu::leaf::result<void>
+		[[nodiscard]] auto clear() noexcept -> mu::leaf::result<void>
 		try
 		{
 			// Set render targets before issuing any draw command.
@@ -100,7 +102,7 @@ namespace mu
 			return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 		}
 
-		auto present() noexcept -> mu::leaf::result<void>
+		[[nodiscard]] auto present() noexcept -> mu::leaf::result<void>
 		try
 		{
 			m_swap_chain->Present();
@@ -122,8 +124,15 @@ namespace mu
 
 		~diligent_window()
 		{
-			m_swap_chain.Release();
-			m_globals.reset();
+			try
+			{
+				m_swap_chain.Release();
+				m_globals.reset();
+			}
+			catch (...)
+			{
+				// MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+			}
 		}
 	};
 } // namespace mu

@@ -1,3 +1,5 @@
+#include <mu_stdlib.h>
+
 #include <memory>
 
 #include <Primitives/interface/BasicTypes.h>
@@ -27,14 +29,17 @@ namespace Diligent
 		imgui_renderer(
 			IRenderDevice* render_device, TEXTURE_FORMAT back_buffer_fmt, TEXTURE_FORMAT depth_buffer_fmt, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size,
 			float scale);
+
 		~imgui_renderer();
-		void new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pretransform, float scale);
-		void end_frame();
-		void render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data);
-		void invalidate_device_objects();
-		void invalidate_font_objects();
-		void create_device_objects(float scale, bool force);
-		void create_fonts_texture(float scale);
+
+		[[nodiscard]] auto new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pretransform, float scale) noexcept
+			-> mu::leaf::result<void>;
+		[[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>;
+		[[nodiscard]] auto render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>;
+		[[nodiscard]] auto invalidate_device_objects() noexcept -> mu::leaf::result<void>;
+		[[nodiscard]] auto invalidate_font_objects() noexcept -> mu::leaf::result<void>;
+		[[nodiscard]] auto create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>;
+		[[nodiscard]] auto create_fonts_texture(float scale) noexcept -> mu::leaf::result<void>;
 
 	private:
 		inline float4 transform_clip_rect(const ImVec2& display_size, const float4& rect) const;

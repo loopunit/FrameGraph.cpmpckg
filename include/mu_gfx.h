@@ -35,15 +35,15 @@ namespace mu
 		gfx_window()		  = default;
 		virtual ~gfx_window() = default;
 
-		virtual auto wants_to_close() noexcept -> mu::leaf::result<bool> = 0;
-		virtual auto show() noexcept -> mu::leaf::result<void>			 = 0;
-		virtual auto begin_frame() noexcept -> mu::leaf::result<void>	 = 0;
-		virtual auto begin_imgui() noexcept -> mu::leaf::result<void>	 = 0;
-		virtual auto end_imgui() noexcept -> mu::leaf::result<void>		 = 0;
-		virtual auto end_frame() noexcept -> mu::leaf::result<void>		 = 0;
+		virtual [[nodiscard]] auto wants_to_close() noexcept -> mu::leaf::result<bool> = 0;
+		virtual [[nodiscard]] auto show() noexcept -> mu::leaf::result<void>			 = 0;
+		virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>	 = 0;
+		virtual [[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>	 = 0;
+		virtual [[nodiscard]] auto end_imgui() noexcept -> mu::leaf::result<void>		 = 0;
+		virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>		 = 0;
 
 		template<typename T_FUNC>
-		auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>
+		[[nodiscard]] auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>
 		{
 			MU_LEAF_CHECK(this->begin_frame());
 
@@ -59,7 +59,7 @@ namespace mu
 		}
 
 		template<typename T_FUNC>
-		auto do_imgui(T_FUNC func) noexcept -> mu::leaf::result<void>
+		[[nodiscard]] auto do_imgui(T_FUNC func) noexcept -> mu::leaf::result<void>
 		{
 			MU_LEAF_CHECK(this->begin_imgui());
 
@@ -83,12 +83,12 @@ namespace mu
 			gfx_interface()			 = default;
 			virtual ~gfx_interface() = default;
 
-			virtual auto open_window(int posX, int posY, int sizeX, int sizeY) noexcept -> mu::leaf::result<std::shared_ptr<gfx_window>> = 0;
-			virtual auto pump() noexcept -> mu::leaf::result<void>																		 = 0;
-			virtual auto present() noexcept -> mu::leaf::result<void>																	 = 0;
+			virtual [[nodiscard]] auto open_window(int posX, int posY, int sizeX, int sizeY) noexcept -> mu::leaf::result<std::shared_ptr<gfx_window>> = 0;
+			virtual [[nodiscard]] auto pump() noexcept -> mu::leaf::result<void>																		 = 0;
+			virtual [[nodiscard]] auto present() noexcept -> mu::leaf::result<void>																	 = 0;
 
 			template<typename T_FUNC>
-			auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>
+			[[nodiscard]] auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>
 			{
 				MU_LEAF_CHECK(this->pump());
 				auto end_frame = gsl::finally(

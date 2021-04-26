@@ -57,29 +57,27 @@ namespace mu
 	{
 		struct imgui_context
 		{
-			std::shared_ptr<diligent_window>				 m_diligent_window;
-			std::shared_ptr<ImGuiContext>					 m_imgui_context;
+			std::shared_ptr<diligent_window>		  m_diligent_window;
+			std::shared_ptr<ImGuiContext>			  m_imgui_context;
 			std::shared_ptr<Diligent::imgui_renderer> m_imgui_renderer;
-			float											 m_dpi_scale{1.0f};
 
-			imgui_context(GLFWwindow* window, std::shared_ptr<diligent_window> diligent_window)
+			imgui_context(GLFWwindow* window, std::shared_ptr<diligent_window> diligent_window, float dpi_scale)
 				: m_diligent_window(diligent_window)
 				, m_imgui_context(ImGui::CreateContext(), ImGui::DestroyContext)
 			{
 				const auto& swapchain_desc = m_diligent_window->m_swap_chain->GetDesc();
 
 				ImGui::SetCurrentContext(m_imgui_context.get());
-				m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(window));
-				
+
 				m_imgui_renderer = std::make_shared<Diligent::imgui_renderer>(
 					m_diligent_window->m_globals->m_device,
 					swapchain_desc.ColorBufferFormat,
 					swapchain_desc.DepthBufferFormat,
 					1024 * 1024,
 					1024 * 1024,
-					m_dpi_scale);
+					dpi_scale);
 
-				ImGui::GetStyle().ScaleAllSizes(m_dpi_scale);
+				ImGui::GetStyle().ScaleAllSizes(dpi_scale);
 			}
 
 			~imgui_context()
@@ -127,10 +125,13 @@ namespace mu
 			std::shared_ptr<diligent_globals> m_renderer_globals;
 			std::shared_ptr<imgui_context>	  m_imgui_context;
 			std::array<int, 2>				  m_display_size{0, 0};
+			float							  m_dpi_scale{1.0f};
 
-			std::array<GLFWcursor*, ImGuiMouseCursor_COUNT> g_MouseCursors;
-			std::array<bool, ImGuiMouseButton_COUNT>		g_MouseJustPressed;
-			bool											g_WantUpdateMonitors{false};
+			std::array<GLFWcursor*, ImGuiMouseCursor_COUNT> m_mouse_cursors;
+			std::array<bool, ImGuiMouseButton_COUNT>		m_mouse_just_pressed;
+			bool											m_want_update_monitors{false};
+			time::moment									m_timer;
+			bool											m_timer_ready = false;
 
 			auto create_window(int posX, int posY, int sizeX, int sizeY) noexcept -> leaf::result<GLFWwindow*>
 			try
@@ -144,6 +145,7 @@ namespace mu
 						glfwSetWindowPos(wnd, posX, posY);
 						glfwGetFramebufferSize(wnd, &m_display_size[0], &m_display_size[1]);
 						glfwSetWindowUserPointer(wnd, this);
+						m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(wnd));
 						return wnd;
 					}
 					catch (...)
@@ -282,17 +284,16 @@ namespace mu
 				// (By design, on X11 cursors are user configurable and some cursors may be missing. When a cursor doesn't exist,
 				// GLFW will emit an error which will often be printed by the app, so we temporarily disable error reporting.
 				// Missing cursors will return NULL and our _UpdateMouseCursor() function will use the Arrow cursor instead.)
-				GLFWerrorfun prev_error_callback			= glfwSetErrorCallback(nullptr);
-				g_MouseCursors[ImGuiMouseCursor_Arrow]		= glfwCreateStandardCursor(GLFW_ARROW_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_TextInput]	= glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_ResizeNS]	= glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_ResizeEW]	= glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_Hand]		= glfwCreateStandardCursor(GLFW_HAND_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_ResizeAll]	= glfwCreateStandardCursor(GLFW_RESIZE_ALL_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_ResizeNESW] = glfwCreateStandardCursor(GLFW_RESIZE_NESW_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_ResizeNWSE] = glfwCreateStandardCursor(GLFW_RESIZE_NWSE_CURSOR);
-				g_MouseCursors[ImGuiMouseCursor_NotAllowed] = glfwCreateStandardCursor(GLFW_NOT_ALLOWED_CURSOR);
-
+				GLFWerrorfun prev_error_callback			 = glfwSetErrorCallback(nullptr);
+				m_mouse_cursors[ImGuiMouseCursor_Arrow]		 = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_TextInput]	 = glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_ResizeNS]	 = glfwCreateStandardCursor(GLFW_VRESIZE_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_ResizeEW]	 = glfwCreateStandardCursor(GLFW_HRESIZE_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_Hand]		 = glfwCreateStandardCursor(GLFW_HAND_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_ResizeAll]	 = glfwCreateStandardCursor(GLFW_RESIZE_ALL_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_ResizeNESW] = glfwCreateStandardCursor(GLFW_RESIZE_NESW_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_ResizeNWSE] = glfwCreateStandardCursor(GLFW_RESIZE_NWSE_CURSOR);
+				m_mouse_cursors[ImGuiMouseCursor_NotAllowed] = glfwCreateStandardCursor(GLFW_NOT_ALLOWED_CURSOR);
 				glfwSetErrorCallback(prev_error_callback);
 
 				// Chain GLFW callbacks: our callbacks will call the user's previously installed callbacks, if any.
@@ -302,9 +303,9 @@ namespace mu
 					{
 						auto self = reinterpret_cast<gfx_window_impl*>(glfwGetWindowUserPointer(window));
 						self->m_imgui_context->make_current();
-						if (action == GLFW_PRESS && button >= 0 && button < self->g_MouseJustPressed.size())
+						if (action == GLFW_PRESS && button >= 0 && button < self->m_mouse_just_pressed.size())
 						{
-							self->g_MouseJustPressed[button] = true;
+							self->m_mouse_just_pressed[button] = true;
 						}
 					});
 
@@ -358,7 +359,7 @@ namespace mu
 						io.AddInputCharacter(c);
 					});
 
-				//glfwSetWindowSizeCallback(
+				// glfwSetWindowSizeCallback(
 				//	m_window,
 				//	[](GLFWwindow* window, int, int)
 				//	{
@@ -370,13 +371,13 @@ namespace mu
 				//		}
 				//	});
 
-				ImGui_ImplGlfw_UpdateMonitors();
+				update_monitors();
 
 				glfwSetMonitorCallback(
 					[](GLFWmonitor* mon, int)
 					{
-						auto self				   = reinterpret_cast<gfx_window_impl*>(glfwGetMonitorUserPointer(mon));
-						self->g_WantUpdateMonitors = true;
+						auto self					 = reinterpret_cast<gfx_window_impl*>(glfwGetMonitorUserPointer(mon));
+						self->m_want_update_monitors = true;
 					});
 
 				glfwSetWindowContentScaleCallback(
@@ -385,8 +386,7 @@ namespace mu
 					{
 						auto self = reinterpret_cast<gfx_window_impl*>(glfwGetWindowUserPointer(window));
 						self->m_imgui_context->make_current();
-
-						self->g_WantUpdateMonitors = true;
+						self->m_want_update_monitors = true;
 					});
 
 				// if (primary)
@@ -410,6 +410,7 @@ namespace mu
 						//						}
 						viewport->PlatformUserData = viewport->PlatformHandle = NULL;
 					};
+
 					// platform_io.Platform_ShowWindow			= ImGui_ImplGlfw_ShowWindow;
 					// platform_io.Platform_SetWindowPos		= ImGui_ImplGlfw_SetWindowPos;
 					// platform_io.Platform_GetWindowPos		= ImGui_ImplGlfw_GetWindowPos;
@@ -427,18 +428,20 @@ namespace mu
 					//#endif
 				}
 
+				m_timer_ready = false;
+
 				return {};
 			}
 
-			void ImGui_ImplGlfw_UpdateMousePosAndButtons()
+			void update_mouse()
 			{
 				// Update buttons
 				ImGuiIO& io = ImGui::GetIO();
 				for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); i++)
 				{
 					// If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
-					io.MouseDown[i]		  = g_MouseJustPressed[i] || glfwGetMouseButton(m_window, i) != 0;
-					g_MouseJustPressed[i] = false;
+					io.MouseDown[i]			= m_mouse_just_pressed[i] || glfwGetMouseButton(m_window, i) != 0;
+					m_mouse_just_pressed[i] = false;
 				}
 
 				// Update mouse position
@@ -451,6 +454,7 @@ namespace mu
 					ImGuiViewport* viewport = platform_io.Viewports[n];
 					auto		   self		= reinterpret_cast<gfx_window_impl*>(viewport->PlatformUserData);
 					IM_ASSERT(self->m_window != NULL);
+
 					const bool focused = glfwGetWindowAttrib(self->m_window, GLFW_FOCUSED) != 0;
 					if (focused)
 					{
@@ -476,8 +480,11 @@ namespace mu
 								io.MousePos = ImVec2((float)mouse_x, (float)mouse_y);
 							}
 						}
+
 						for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); i++)
+						{
 							io.MouseDown[i] |= glfwGetMouseButton(self->m_window, i) != 0;
+						}
 					}
 
 					// (Optional) When using multiple viewports: set io.MouseHoveredViewport to the viewport the OS mouse cursor is hovering.
@@ -491,15 +498,19 @@ namespace mu
 					const bool window_no_input = (viewport->Flags & ImGuiViewportFlags_NoInputs) != 0;
 					glfwSetWindowAttrib(self->m_window, GLFW_MOUSE_PASSTHROUGH, window_no_input);
 					if (glfwGetWindowAttrib(self->m_window, GLFW_HOVERED) && !window_no_input)
+					{
 						io.MouseHoveredViewport = viewport->ID;
+					}
 				}
 			}
 
-			void ImGui_ImplGlfw_UpdateMouseCursor()
+			void update_cursor()
 			{
 				ImGuiIO& io = ImGui::GetIO();
 				if ((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) || glfwGetInputMode(m_window, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+				{
 					return;
+				}
 
 				ImGuiMouseCursor imgui_cursor = ImGui::GetMouseCursor();
 				ImGuiPlatformIO& platform_io  = ImGui::GetPlatformIO();
@@ -515,37 +526,50 @@ namespace mu
 					{
 						// Show OS mouse cursor
 						// FIXME-PLATFORM: Unfocused windows seems to fail changing the mouse cursor with GLFW 3.2, but 3.3 works here.
-						glfwSetCursor(self->m_window, g_MouseCursors[imgui_cursor] ? g_MouseCursors[imgui_cursor] : g_MouseCursors[ImGuiMouseCursor_Arrow]);
+						glfwSetCursor(self->m_window, m_mouse_cursors[imgui_cursor] ? m_mouse_cursors[imgui_cursor] : m_mouse_cursors[ImGuiMouseCursor_Arrow]);
 						glfwSetInputMode(self->m_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 					}
 				}
 			}
 
-			void ImGui_ImplGlfw_UpdateGamepads()
+			void update_gamepads()
 			{
 				ImGuiIO& io = ImGui::GetIO();
 				memset(io.NavInputs, 0, sizeof(io.NavInputs));
 				if ((io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) == 0)
+				{
 					return;
+				}
 
-// Update gamepad inputs
-#define MAP_BUTTON(NAV_NO, BUTTON_NO)                                                                                                                                              \
-	{                                                                                                                                                                              \
-		if (buttons_count > BUTTON_NO && buttons[BUTTON_NO] == GLFW_PRESS)                                                                                                         \
-			io.NavInputs[NAV_NO] = 1.0f;                                                                                                                                           \
-	}
-#define MAP_ANALOG(NAV_NO, AXIS_NO, V0, V1)                                                                                                                                        \
-	{                                                                                                                                                                              \
-		float v = (axes_count > AXIS_NO) ? axes[AXIS_NO] : V0;                                                                                                                     \
-		v		= (v - V0) / (V1 - V0);                                                                                                                                            \
-		if (v > 1.0f)                                                                                                                                                              \
-			v = 1.0f;                                                                                                                                                              \
-		if (io.NavInputs[NAV_NO] < v)                                                                                                                                              \
-			io.NavInputs[NAV_NO] = v;                                                                                                                                              \
-	}
+				// Update gamepad inputs
 				int					 axes_count = 0, buttons_count = 0;
 				const float*		 axes	 = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &axes_count);
 				const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &buttons_count);
+
+				auto MAP_BUTTON = [&](int NAV_NO, int BUTTON_NO)
+				{
+					if (buttons_count > BUTTON_NO && buttons[BUTTON_NO] == GLFW_PRESS)
+					{
+						io.NavInputs[NAV_NO] = 1.0f;
+					}
+				};
+
+				auto MAP_ANALOG = [&](int NAV_NO, int AXIS_NO, float V0, float V1)
+				{
+					float v = (axes_count > AXIS_NO) ? axes[AXIS_NO] : V0;
+					v		= (v - V0) / (V1 - V0);
+
+					if (v > 1.0f)
+					{
+						v = 1.0f;
+					}
+
+					if (io.NavInputs[NAV_NO] < v)
+					{
+						io.NavInputs[NAV_NO] = v;
+					}
+				};
+
 				MAP_BUTTON(ImGuiNavInput_Activate, 0);	 // Cross / A
 				MAP_BUTTON(ImGuiNavInput_Cancel, 1);	 // Circle / B
 				MAP_BUTTON(ImGuiNavInput_Menu, 2);		 // Square / X
@@ -562,75 +586,95 @@ namespace mu
 				MAP_ANALOG(ImGuiNavInput_LStickRight, 0, +0.3f, +0.9f);
 				MAP_ANALOG(ImGuiNavInput_LStickUp, 1, +0.3f, +0.9f);
 				MAP_ANALOG(ImGuiNavInput_LStickDown, 1, -0.3f, -0.9f);
-#undef MAP_BUTTON
-#undef MAP_ANALOG
+
 				if (axes_count > 0 && buttons_count > 0)
+				{
 					io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+				}
 				else
+				{
 					io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
+				}
 			}
 
-			void ImGui_ImplGlfw_UpdateMonitors()
+			void update_monitors()
 			{
-				ImGuiPlatformIO& platform_io	= ImGui::GetPlatformIO();
-				int				 monitors_count = 0;
-				GLFWmonitor**	 glfw_monitors	= glfwGetMonitors(&monitors_count);
+				int			  monitors_count = 0;
+				GLFWmonitor** glfw_monitors	 = glfwGetMonitors(&monitors_count);
+
+				ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 				platform_io.Monitors.resize(0);
 				for (int n = 0; n < monitors_count; n++)
 				{
+					const GLFWvidmode* vid_mode = glfwGetVideoMode(glfw_monitors[n]);
+
 					glfwSetMonitorUserPointer(glfw_monitors[n], this);
 
-					ImGuiPlatformMonitor monitor;
-					int					 x, y;
+					int x, y;
 					glfwGetMonitorPos(glfw_monitors[n], &x, &y);
-					const GLFWvidmode* vid_mode = glfwGetVideoMode(glfw_monitors[n]);
-					monitor.MainPos = monitor.WorkPos = ImVec2((float)x, (float)y);
-					monitor.MainSize = monitor.WorkSize = ImVec2((float)vid_mode->width, (float)vid_mode->height);
 
 					int w, h;
 					glfwGetMonitorWorkarea(glfw_monitors[n], &x, &y, &w, &h);
-					monitor.WorkPos	 = ImVec2((float)x, (float)y);
-					monitor.WorkSize = ImVec2((float)w, (float)h);
 
 					// Warning: the validity of monitor DPI information on Windows depends on the application DPI awareness settings, which generally needs to be set in the
 					// manifest or at runtime.
 					float x_scale, y_scale;
 					glfwGetMonitorContentScale(glfw_monitors[n], &x_scale, &y_scale);
-					monitor.DpiScale = y_scale;
+
+					ImGuiPlatformMonitor monitor;
+					monitor.MainPos	 = ImVec2((float)x, (float)y);
+					monitor.MainSize = ImVec2((float)vid_mode->width, (float)vid_mode->height);
+					monitor.WorkPos	 = ImVec2((float)x, (float)y);
+					monitor.WorkSize = ImVec2((float)w, (float)h);
+					monitor.DpiScale = std::min(x_scale, y_scale);
 
 					platform_io.Monitors.push_back(monitor);
 				}
-				g_WantUpdateMonitors = false;
+				m_want_update_monitors = false;
 			}
 
-			void ImGui_ImplGlfw_NewFrame()
+			void new_frame()
 			{
+				time::moment delta_time;
+				if (m_timer_ready) [[likely]]
+				{
+					auto next_time = time::now();
+					delta_time	   = next_time - m_timer;
+					m_timer		   = next_time;
+				}
+				else
+				{
+					m_timer		  = time::now();
+					m_timer_ready = true;
+				}
+
 				ImGuiIO& io = ImGui::GetIO();
 				IM_ASSERT(io.Fonts->IsBuilt() && "Font atlas not built!");
 
+				io.DeltaTime = delta_time.as_seconds<float>();
+
 				// Setup display size (every frame to accommodate for window resizing)
 				int w, h;
-				int display_w, display_h;
 				glfwGetWindowSize(m_window, &w, &h);
+
+				int display_w, display_h;
 				glfwGetFramebufferSize(m_window, &display_w, &display_h);
+
 				io.DisplaySize = ImVec2((float)w, (float)h);
 
 				if (w > 0 && h > 0)
+				{
 					io.DisplayFramebufferScale = ImVec2((float)display_w / w, (float)display_h / h);
+				}
 
-				if (g_WantUpdateMonitors)
-					ImGui_ImplGlfw_UpdateMonitors();
+				if (m_want_update_monitors)
+				{
+					update_monitors();
+				}
 
-				// Setup time step
-				double current_time = glfwGetTime();
-				io.DeltaTime		= /*g_Time > 0.0 ? (float)(current_time - g_Time) :*/ (float)(1.0f / 60.0f);
-				// g_Time				= current_time;
-
-				ImGui_ImplGlfw_UpdateMousePosAndButtons();
-				ImGui_ImplGlfw_UpdateMouseCursor();
-
-				// Update game controllers (if enabled and available)
-				ImGui_ImplGlfw_UpdateGamepads();
+				update_mouse();
+				update_cursor();
+				update_gamepads();
 			}
 
 			auto init_resources() noexcept -> mu::leaf::result<void>
@@ -658,7 +702,7 @@ namespace mu
 							mon = glfwGetPrimaryMonitor();
 						}
 						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window)}, m_renderer_globals);
-						m_imgui_context	  = std::make_shared<imgui_context>(m_window, m_diligent_window);
+						m_imgui_context	  = std::make_shared<imgui_context>(m_window, m_diligent_window, m_dpi_scale);
 					}
 					catch (...)
 					{
@@ -708,12 +752,9 @@ namespace mu
 				{
 					ImGui::SetCurrentContext(m_imgui_context->m_imgui_context.get());
 
-					ImGui_ImplGlfw_NewFrame();
+					new_frame();
 
-					auto m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(m_window));
-
-					m_imgui_context->m_imgui_renderer
-						->new_frame(m_display_size[0], m_display_size[1], Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_dpi_scale);
+					m_imgui_context->m_imgui_renderer->new_frame(m_display_size[0], m_display_size[1], Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_dpi_scale);
 
 					ImGui::NewFrame();
 

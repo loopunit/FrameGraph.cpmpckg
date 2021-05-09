@@ -30,17 +30,22 @@ namespace mu
 
 namespace mu
 {
-	struct gfx_window
+	struct gfx_window : std::enable_shared_from_this<gfx_window>
 	{
+		std::shared_ptr<gfx_window> get_shared_ptr()
+		{
+			return shared_from_this();
+		}
+		
 		gfx_window()		  = default;
 		virtual ~gfx_window() = default;
 
 		virtual [[nodiscard]] auto wants_to_close() noexcept -> mu::leaf::result<bool> = 0;
-		virtual [[nodiscard]] auto show() noexcept -> mu::leaf::result<void>			 = 0;
-		virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>	 = 0;
-		virtual [[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>	 = 0;
-		virtual [[nodiscard]] auto end_imgui() noexcept -> mu::leaf::result<void>		 = 0;
-		virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>		 = 0;
+		virtual [[nodiscard]] auto show() noexcept -> mu::leaf::result<void>		   = 0;
+		virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>	   = 0;
+		virtual [[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>	   = 0;
+		virtual [[nodiscard]] auto end_imgui() noexcept -> mu::leaf::result<void>	   = 0;
+		virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>	   = 0;
 
 		template<typename T_FUNC>
 		[[nodiscard]] auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>
@@ -84,8 +89,8 @@ namespace mu
 			virtual ~gfx_interface() = default;
 
 			virtual [[nodiscard]] auto open_window(int posX, int posY, int sizeX, int sizeY) noexcept -> mu::leaf::result<std::shared_ptr<gfx_window>> = 0;
-			virtual [[nodiscard]] auto pump() noexcept -> mu::leaf::result<void>																		 = 0;
-			virtual [[nodiscard]] auto present() noexcept -> mu::leaf::result<void>																	 = 0;
+			virtual [[nodiscard]] auto pump() noexcept -> mu::leaf::result<void>																	   = 0;
+			virtual [[nodiscard]] auto present() noexcept -> mu::leaf::result<void>																	   = 0;
 
 			template<typename T_FUNC>
 			[[nodiscard]] auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>

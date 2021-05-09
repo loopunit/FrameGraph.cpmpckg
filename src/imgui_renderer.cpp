@@ -223,51 +223,21 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
     return out;
 }
 )";
+} // namespace Diligent
 
-	imgui_renderer::imgui_renderer(
-		IRenderDevice* device,
-		TEXTURE_FORMAT back_buffer_fmt,
-		TEXTURE_FORMAT depth_buffer_fmt,
-		Uint32		   initial_vertex_buffer_size,
-		Uint32		   initial_index_buffer_size,
-		float		   scale)
-		: m_device{device}
-		, m_back_buffer_fmt{back_buffer_fmt}
-		, m_depth_buffer_fmt{depth_buffer_fmt}
-		, m_vertex_buffer_size{initial_vertex_buffer_size}
-		, m_index_buffer_size{initial_index_buffer_size}
-		, m_scale{scale}
+namespace Diligent
+{
+	imgui_shared_resources::imgui_shared_resources(IRenderDevice* render_device, TEXTURE_FORMAT back_buffer_fmt, TEXTURE_FORMAT depth_buffer_fmt, float scale)
+		: m_device(render_device)
+		, m_back_buffer_fmt(back_buffer_fmt)
+		, m_depth_buffer_fmt(depth_buffer_fmt)
+		, m_scale(scale)
+	{ }
+
+	auto imgui_shared_resources::invalidate_device_objects() noexcept -> mu::leaf::result<void>
 	{
-		IMGUI_CHECKVERSION();
-		ImGuiIO& io			   = ImGui::GetIO();
-		io.BackendRendererName = "imgui_renderer";
-		io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
+		invalidate_font_objects();
 
-		MU_LEAF_RETHROW(create_device_objects(scale, true));
-	}
-
-	imgui_renderer::~imgui_renderer() { }
-
-	auto imgui_renderer::new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pre_transform, float scale) noexcept
-		-> mu::leaf::result<void>
-	{
-		MU_LEAF_CHECK(create_device_objects(scale, false));
-
-		m_render_surface_width	= render_surface_width;
-		m_render_surface_height = render_surface_height;
-		m_surface_pre_transform = surface_pre_transform;
-		return {};
-	}
-
-	auto imgui_renderer::end_frame() noexcept -> mu::leaf::result<void>
-	{
-		return {};
-	}
-
-	auto imgui_renderer::invalidate_device_objects() noexcept -> mu::leaf::result<void>
-	{
-		m_vertex_buffer.Release();
-		m_index_buffer.Release();
 		m_vertex_constant_buffer.Release();
 		m_pso.Release();
 		m_font_srv.Release();
@@ -276,14 +246,16 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		return {};
 	}
 
-	auto imgui_renderer::invalidate_font_objects() noexcept -> mu::leaf::result<void>
+	auto imgui_shared_resources::invalidate_font_objects() noexcept -> mu::leaf::result<void>
 	{
 		m_font_srv.Release();
 		return {};
 	}
 
-	auto imgui_renderer::create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>
+	auto imgui_shared_resources::create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>
 	{
+		m_scale = scale;
+
 		bool assets_exist  = m_pso;
 		bool scale_matches = scale == m_scale;
 
@@ -295,140 +267,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		if (force || !assets_exist)
 		{
 			MU_LEAF_CHECK(invalidate_device_objects());
-
-			ShaderCreateInfo shader_ci;
-			shader_ci.UseCombinedTextureSamplers = true;
-			shader_ci.SourceLanguage			 = SHADER_SOURCE_LANGUAGE_DEFAULT;
-
-			const auto& deviceCaps = m_device->GetDeviceCaps();
-
-			RefCntAutoPtr<IShader> vs;
-			{
-				shader_ci.Desc.ShaderType = SHADER_TYPE_VERTEX;
-				shader_ci.Desc.Name		  = "Imgui VS";
-				switch (deviceCaps.DevType)
-				{
-				case RENDER_DEVICE_TYPE_VULKAN:
-					shader_ci.ByteCode	   = g_vertex_shader_spirv;
-					shader_ci.ByteCodeSize = sizeof(g_vertex_shader_spirv);
-					break;
-
-				case RENDER_DEVICE_TYPE_D3D11:
-				case RENDER_DEVICE_TYPE_D3D12:
-					shader_ci.Source = g_vertex_shader_hlsl;
-					break;
-
-				case RENDER_DEVICE_TYPE_GL:
-				case RENDER_DEVICE_TYPE_GLES:
-					shader_ci.Source = g_vertex_shader_glsl;
-					break;
-
-				case RENDER_DEVICE_TYPE_METAL:
-					shader_ci.Source	 = g_shaders_msl;
-					shader_ci.EntryPoint = "vs_main";
-					break;
-
-				default:
-					UNEXPECTED("Unknown render device type");
-				}
-				m_device->CreateShader(shader_ci, &vs);
-			}
-
-			RefCntAutoPtr<IShader> ps;
-			{
-				shader_ci.Desc.ShaderType = SHADER_TYPE_PIXEL;
-				shader_ci.Desc.Name		  = "Imgui PS";
-				switch (deviceCaps.DevType)
-				{
-				case RENDER_DEVICE_TYPE_VULKAN:
-					shader_ci.ByteCode	   = g_fragment_shader_spirv;
-					shader_ci.ByteCodeSize = sizeof(g_fragment_shader_spirv);
-					break;
-
-				case RENDER_DEVICE_TYPE_D3D11:
-				case RENDER_DEVICE_TYPE_D3D12:
-					shader_ci.Source = g_pixel_shader_hlsl;
-					break;
-
-				case RENDER_DEVICE_TYPE_GL:
-				case RENDER_DEVICE_TYPE_GLES:
-					shader_ci.Source = g_pixel_shader_glsl;
-					break;
-
-				case RENDER_DEVICE_TYPE_METAL:
-					shader_ci.Source	 = g_shaders_msl;
-					shader_ci.EntryPoint = "ps_main";
-					break;
-
-				default:
-					UNEXPECTED("Unknown render device type");
-				}
-				m_device->CreateShader(shader_ci, &ps);
-			}
-
-			GraphicsPipelineStateCreateInfo pso_create_info;
-
-			pso_create_info.PSODesc.Name = "ImGUI PSO";
-			auto& gfx_pipeline			 = pso_create_info.GraphicsPipeline;
-
-			gfx_pipeline.NumRenderTargets  = 1;
-			gfx_pipeline.RTVFormats[0]	   = m_back_buffer_fmt;
-			gfx_pipeline.DSVFormat		   = m_depth_buffer_fmt;
-			gfx_pipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-			pso_create_info.pVS = vs;
-			pso_create_info.pPS = ps;
-
-			gfx_pipeline.RasterizerDesc.CullMode	  = CULL_MODE_NONE;
-			gfx_pipeline.RasterizerDesc.ScissorEnable = True;
-			gfx_pipeline.DepthStencilDesc.DepthEnable = False;
-
-			auto& rt_0				   = gfx_pipeline.BlendDesc.RenderTargets[0];
-			rt_0.BlendEnable		   = True;
-			rt_0.SrcBlend			   = BLEND_FACTOR_SRC_ALPHA;
-			rt_0.DestBlend			   = BLEND_FACTOR_INV_SRC_ALPHA;
-			rt_0.BlendOp			   = BLEND_OPERATION_ADD;
-			rt_0.SrcBlendAlpha		   = BLEND_FACTOR_INV_SRC_ALPHA;
-			rt_0.DestBlendAlpha		   = BLEND_FACTOR_ZERO;
-			rt_0.BlendOpAlpha		   = BLEND_OPERATION_ADD;
-			rt_0.RenderTargetWriteMask = COLOR_MASK_ALL;
-
-			LayoutElement vs_inputs[] //
-				{
-					{0, 0, 2, VT_FLOAT32},	  // pos
-					{1, 0, 2, VT_FLOAT32},	  // uv
-					{2, 0, 4, VT_UINT8, True} // col
-				};
-			gfx_pipeline.InputLayout.NumElements	= _countof(vs_inputs);
-			gfx_pipeline.InputLayout.LayoutElements = vs_inputs;
-
-			ShaderResourceVariableDesc variables[] = {
-				{SHADER_TYPE_PIXEL, "Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC} //
-			};
-			pso_create_info.PSODesc.ResourceLayout.Variables	= variables;
-			pso_create_info.PSODesc.ResourceLayout.NumVariables = _countof(variables);
-
-			SamplerDesc sampler_linear_wrap;
-			sampler_linear_wrap.AddressU			  = TEXTURE_ADDRESS_WRAP;
-			sampler_linear_wrap.AddressV			  = TEXTURE_ADDRESS_WRAP;
-			sampler_linear_wrap.AddressW			  = TEXTURE_ADDRESS_WRAP;
-			ImmutableSamplerDesc immutable_samplers[] = {
-				{SHADER_TYPE_PIXEL, "Texture", sampler_linear_wrap} //
-			};
-			pso_create_info.PSODesc.ResourceLayout.ImmutableSamplers	= immutable_samplers;
-			pso_create_info.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(immutable_samplers);
-
-			m_device->CreateGraphicsPipelineState(pso_create_info, &m_pso);
-
-			{
-				BufferDesc buffer_desc;
-				buffer_desc.uiSizeInBytes  = sizeof(float4x4);
-				buffer_desc.Usage		   = USAGE_DYNAMIC;
-				buffer_desc.BindFlags	   = BIND_UNIFORM_BUFFER;
-				buffer_desc.CPUAccessFlags = CPU_ACCESS_WRITE;
-				m_device->CreateBuffer(buffer_desc, nullptr, &m_vertex_constant_buffer);
-			}
-			m_pso->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants")->Set(m_vertex_constant_buffer);
+			MU_LEAF_CHECK(create_device_objects());
 		}
 		else if (!scale_matches)
 		{
@@ -438,12 +277,155 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		MU_LEAF_CHECK(create_fonts_texture(scale));
 
 		return {};
+	}	
+		
+	auto imgui_shared_resources::create_device_objects() noexcept -> mu::leaf::result<void>
+	{
+		ShaderCreateInfo shader_ci;
+		shader_ci.UseCombinedTextureSamplers = true;
+		shader_ci.SourceLanguage			 = SHADER_SOURCE_LANGUAGE_DEFAULT;
+
+		const auto& deviceCaps = m_device->GetDeviceCaps();
+
+		{
+			shader_ci.Desc.ShaderType = SHADER_TYPE_VERTEX;
+			shader_ci.Desc.Name		  = "Imgui VS";
+			switch (deviceCaps.DevType)
+			{
+			case RENDER_DEVICE_TYPE_VULKAN:
+				shader_ci.ByteCode	   = g_vertex_shader_spirv;
+				shader_ci.ByteCodeSize = sizeof(g_vertex_shader_spirv);
+				break;
+
+			case RENDER_DEVICE_TYPE_D3D11:
+			case RENDER_DEVICE_TYPE_D3D12:
+				shader_ci.Source = g_vertex_shader_hlsl;
+				break;
+
+			case RENDER_DEVICE_TYPE_GL:
+			case RENDER_DEVICE_TYPE_GLES:
+				shader_ci.Source = g_vertex_shader_glsl;
+				break;
+
+			case RENDER_DEVICE_TYPE_METAL:
+				shader_ci.Source	 = g_shaders_msl;
+				shader_ci.EntryPoint = "vs_main";
+				break;
+
+			default:
+				UNEXPECTED("Unknown render device type");
+			}
+			m_device->CreateShader(shader_ci, &m_vs);
+		}
+
+		{
+			shader_ci.Desc.ShaderType = SHADER_TYPE_PIXEL;
+			shader_ci.Desc.Name		  = "Imgui PS";
+			switch (deviceCaps.DevType)
+			{
+			case RENDER_DEVICE_TYPE_VULKAN:
+				shader_ci.ByteCode	   = g_fragment_shader_spirv;
+				shader_ci.ByteCodeSize = sizeof(g_fragment_shader_spirv);
+				break;
+
+			case RENDER_DEVICE_TYPE_D3D11:
+			case RENDER_DEVICE_TYPE_D3D12:
+				shader_ci.Source = g_pixel_shader_hlsl;
+				break;
+
+			case RENDER_DEVICE_TYPE_GL:
+			case RENDER_DEVICE_TYPE_GLES:
+				shader_ci.Source = g_pixel_shader_glsl;
+				break;
+
+			case RENDER_DEVICE_TYPE_METAL:
+				shader_ci.Source	 = g_shaders_msl;
+				shader_ci.EntryPoint = "ps_main";
+				break;
+
+			default:
+				UNEXPECTED("Unknown render device type");
+			}
+			m_device->CreateShader(shader_ci, &m_ps);
+		}
+
+		GraphicsPipelineStateCreateInfo pso_create_info;
+
+		pso_create_info.PSODesc.Name = "ImGUI PSO";
+		auto& gfx_pipeline			 = pso_create_info.GraphicsPipeline;
+
+		gfx_pipeline.NumRenderTargets  = 1;
+		gfx_pipeline.RTVFormats[0]	   = m_back_buffer_fmt;
+		gfx_pipeline.DSVFormat		   = m_depth_buffer_fmt;
+		gfx_pipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+		pso_create_info.pVS = m_vs;
+		pso_create_info.pPS = m_ps;
+
+		gfx_pipeline.RasterizerDesc.CullMode	  = CULL_MODE_NONE;
+		gfx_pipeline.RasterizerDesc.ScissorEnable = True;
+		gfx_pipeline.DepthStencilDesc.DepthEnable = False;
+
+		auto& rt_0				   = gfx_pipeline.BlendDesc.RenderTargets[0];
+		rt_0.BlendEnable		   = True;
+		rt_0.SrcBlend			   = BLEND_FACTOR_SRC_ALPHA;
+		rt_0.DestBlend			   = BLEND_FACTOR_INV_SRC_ALPHA;
+		rt_0.BlendOp			   = BLEND_OPERATION_ADD;
+		rt_0.SrcBlendAlpha		   = BLEND_FACTOR_INV_SRC_ALPHA;
+		rt_0.DestBlendAlpha		   = BLEND_FACTOR_ZERO;
+		rt_0.BlendOpAlpha		   = BLEND_OPERATION_ADD;
+		rt_0.RenderTargetWriteMask = COLOR_MASK_ALL;
+
+		LayoutElement vs_inputs[] //
+			{
+				{0, 0, 2, VT_FLOAT32},	  // pos
+				{1, 0, 2, VT_FLOAT32},	  // uv
+				{2, 0, 4, VT_UINT8, True} // col
+			};
+		gfx_pipeline.InputLayout.NumElements	= _countof(vs_inputs);
+		gfx_pipeline.InputLayout.LayoutElements = vs_inputs;
+
+		ShaderResourceVariableDesc variables[] = {
+			{SHADER_TYPE_PIXEL, "Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC} //
+		};
+		pso_create_info.PSODesc.ResourceLayout.Variables	= variables;
+		pso_create_info.PSODesc.ResourceLayout.NumVariables = _countof(variables);
+
+		SamplerDesc sampler_linear_wrap;
+		sampler_linear_wrap.AddressU			  = TEXTURE_ADDRESS_WRAP;
+		sampler_linear_wrap.AddressV			  = TEXTURE_ADDRESS_WRAP;
+		sampler_linear_wrap.AddressW			  = TEXTURE_ADDRESS_WRAP;
+		ImmutableSamplerDesc immutable_samplers[] = {
+			{SHADER_TYPE_PIXEL, "Texture", sampler_linear_wrap} //
+		};
+		pso_create_info.PSODesc.ResourceLayout.ImmutableSamplers	= immutable_samplers;
+		pso_create_info.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(immutable_samplers);
+
+		m_device->CreateGraphicsPipelineState(pso_create_info, &m_pso);
+
+		{
+			BufferDesc buffer_desc;
+			buffer_desc.uiSizeInBytes  = sizeof(float4x4);
+			buffer_desc.Usage		   = USAGE_DYNAMIC;
+			buffer_desc.BindFlags	   = BIND_UNIFORM_BUFFER;
+			buffer_desc.CPUAccessFlags = CPU_ACCESS_WRITE;
+			m_device->CreateBuffer(buffer_desc, nullptr, &m_vertex_constant_buffer);
+		}
+		m_pso->GetStaticVariableByName(SHADER_TYPE_VERTEX, "Constants")->Set(m_vertex_constant_buffer);
+		return {};
 	}
 
-	auto imgui_renderer::create_fonts_texture(float scale) noexcept -> mu::leaf::result<void>
+	auto imgui_shared_resources::create_fonts_texture(float scale) noexcept -> mu::leaf::result<void>
 	{
+		if (m_font_srv)
+		{
+			return {};
+		}
+
 		// Build texture atlas
 		ImGuiIO& io = ImGui::GetIO();
+
+		io.Fonts->ClearFonts();
 
 		ImFontConfig cfg;
 		cfg.SizePixels = 13 * scale;
@@ -465,23 +447,23 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 		TextureSubResData mip_0_data[] = {{pixels, font_tex_desc.Width * 4}};
 		TextureData		  init_data(mip_0_data, _countof(mip_0_data));
 
-		RefCntAutoPtr<ITexture> font_tex;
-		m_device->CreateTexture(font_tex_desc, &init_data, &font_tex);
-		m_font_srv = font_tex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+		m_device->CreateTexture(font_tex_desc, &init_data, &m_font_tex);
+		m_scale = scale;
+
+		m_font_srv = m_font_tex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
 
 		m_srb.Release();
 		m_pso->CreateShaderResourceBinding(&m_srb, true);
 		m_texture_var = m_srb->GetVariableByName(SHADER_TYPE_PIXEL, "Texture");
 		VERIFY_EXPR(m_texture_var != nullptr);
 
-		// Store our identifier
-		io.Fonts->TexID = (ImTextureID)m_font_srv;
-
-		m_scale = scale;
-
 		return {};
 	}
 
+} // namespace Diligent
+
+namespace Diligent
+{
 	float4 imgui_renderer::transform_clip_rect(const ImVec2& display_size, const float4& rect) const
 	{
 		switch (m_surface_pre_transform)
@@ -591,6 +573,70 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 			return rect;
 		}
 	}
+} // namespace Diligent
+
+namespace Diligent
+{
+	imgui_renderer::imgui_renderer(
+		IRenderDevice* device,
+		TEXTURE_FORMAT back_buffer_fmt,
+		TEXTURE_FORMAT depth_buffer_fmt,
+		Uint32		   initial_vertex_buffer_size,
+		Uint32		   initial_index_buffer_size,
+		float		   scale)
+		: m_shared_resources(std::make_shared<imgui_shared_resources>(device, back_buffer_fmt, depth_buffer_fmt, scale))
+		, m_vertex_buffer_size{initial_vertex_buffer_size}
+		, m_index_buffer_size{initial_index_buffer_size}
+	{
+		IMGUI_CHECKVERSION();
+		ImGuiIO& io			   = ImGui::GetIO();
+		io.BackendRendererName = "imgui_renderer";
+		io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
+
+		MU_LEAF_RETHROW(create_device_objects(scale, true));
+	}
+
+	imgui_renderer::imgui_renderer(std::shared_ptr<imgui_shared_resources> shared_resources, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size, float scale)
+		: m_shared_resources(shared_resources)
+		, m_vertex_buffer_size{initial_vertex_buffer_size}
+		, m_index_buffer_size{initial_index_buffer_size}
+	{
+		MU_LEAF_RETHROW(create_device_objects(scale, false));
+	}
+
+	imgui_renderer::~imgui_renderer() { }
+
+	auto imgui_renderer::new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pre_transform, float scale) noexcept
+		-> mu::leaf::result<void>
+	{
+		MU_LEAF_CHECK(create_device_objects(scale, false));
+
+		m_render_surface_width	= render_surface_width;
+		m_render_surface_height = render_surface_height;
+		m_surface_pre_transform = surface_pre_transform;
+
+		ImGuiIO& io		= ImGui::GetIO();
+		io.Fonts->TexID = (ImTextureID)m_shared_resources->m_font_srv;
+
+		return {};
+	}
+
+	auto imgui_renderer::end_frame() noexcept -> mu::leaf::result<void>
+	{
+		return {};
+	}
+
+	auto imgui_renderer::create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>
+	{
+		if (force)
+		{
+			m_vertex_buffer.Release();
+			m_index_buffer.Release();
+		}
+
+		MU_LEAF_CHECK(m_shared_resources->create_device_objects(scale, force));
+		return {};
+	}
 
 	auto imgui_renderer::render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 	{
@@ -615,7 +661,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 			vb_desc.uiSizeInBytes  = m_vertex_buffer_size * sizeof(ImDrawVert);
 			vb_desc.Usage		   = USAGE_DYNAMIC;
 			vb_desc.CPUAccessFlags = CPU_ACCESS_WRITE;
-			m_device->CreateBuffer(vb_desc, nullptr, &m_vertex_buffer);
+			m_shared_resources->m_device->CreateBuffer(vb_desc, nullptr, &m_vertex_buffer);
 		}
 
 		if (!m_index_buffer || static_cast<int>(m_index_buffer_size) < draw_data->TotalIdxCount)
@@ -632,7 +678,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 			ib_desc.uiSizeInBytes  = m_index_buffer_size * sizeof(ImDrawIdx);
 			ib_desc.Usage		   = USAGE_DYNAMIC;
 			ib_desc.CPUAccessFlags = CPU_ACCESS_WRITE;
-			m_device->CreateBuffer(ib_desc, nullptr, &m_index_buffer);
+			m_shared_resources->m_device->CreateBuffer(ib_desc, nullptr, &m_index_buffer);
 		}
 
 		{
@@ -701,7 +747,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 				UNEXPECTED("Unknown transform");
 			}
 
-			MapHelper<float4x4> cb_data(ctx, m_vertex_constant_buffer, MAP_WRITE, MAP_FLAG_DISCARD);
+			MapHelper<float4x4> cb_data(ctx, m_shared_resources->m_vertex_constant_buffer, MAP_WRITE, MAP_FLAG_DISCARD);
 			*cb_data = projection;
 		}
 
@@ -712,7 +758,7 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 			IBuffer* vertex_buffers[] = {m_vertex_buffer};
 			ctx->SetVertexBuffers(0, 1, vertex_buffers, offsets, RESOURCE_STATE_TRANSITION_MODE_TRANSITION, SET_VERTEX_BUFFERS_FLAG_RESET);
 			ctx->SetIndexBuffer(m_index_buffer, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-			ctx->SetPipelineState(m_pso);
+			ctx->SetPipelineState(m_shared_resources->m_pso);
 
 			const float blend_factor[4] = {0.f, 0.f, 0.f, 0.f};
 			ctx->SetBlendFactors(blend_factor);
@@ -786,8 +832,8 @@ fragment PSOut ps_main(VSOut in [[stage_in]],
 					if (texture_view != last_texture_view)
 					{
 						last_texture_view = texture_view;
-						m_texture_var->Set(texture_view);
-						ctx->CommitShaderResources(m_srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+						m_shared_resources->m_texture_var->Set(texture_view);
+						ctx->CommitShaderResources(m_shared_resources->m_srb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 					}
 
 					// Draw

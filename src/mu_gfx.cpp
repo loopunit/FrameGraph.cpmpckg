@@ -68,7 +68,7 @@ namespace mu
 			time::moment									m_timer;
 			bool											m_timer_ready = false;
 
-			auto make_current() noexcept -> leaf::result<void>
+			[[nodiscard]] auto make_current() noexcept -> leaf::result<void>
 			try
 			{
 				ImGui::SetCurrentContext(m_imgui_lib_context.get());
@@ -90,7 +90,8 @@ namespace mu
 			std::array<int, 2> m_display_size{0, 0};
 			float			   m_dpi_scale{1.0f};
 
-			gfx_child_window(std::shared_ptr<gfx_application_state> application_state, ImGuiViewport* viewport, int posX, int posY, int sizeX, int sizeY) : m_application_state(application_state)
+			gfx_child_window(std::shared_ptr<gfx_application_state> application_state, ImGuiViewport* viewport, int posX, int posY, int sizeX, int sizeY)
+				: m_application_state(application_state)
 			{
 				MU_LEAF_AUTO_THROW(new_window, create_window(viewport, posX, posY, sizeX, sizeY));
 
@@ -177,6 +178,7 @@ namespace mu
 					});
 
 				m_window = std::move(wnd);
+				update_dpi();
 			}
 
 			virtual ~gfx_child_window()
@@ -244,16 +246,6 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			[[nodiscard]] auto wants_to_close() noexcept -> leaf::result<bool>
-			try
-			{
-				return glfwWindowShouldClose(m_window.get()) != 0;
-			}
-			catch (...)
-			{
-				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
-			}
-
 			[[nodiscard]] auto init_resources(std::shared_ptr<diligent_globals> globals, std::shared_ptr<Diligent::imgui_shared_resources> shared_resources) noexcept
 				-> mu::leaf::result<void>
 			{
@@ -275,10 +267,28 @@ namespace mu
 				return {};
 			}
 
+			[[nodiscard]] auto update_dpi() noexcept -> mu::leaf::result<void>
+			{
+#ifdef _WINDOWS_
+				try
+				{
+					auto native_handle = glfwGetWin32Window(m_window.get());
+					m_dpi_scale		   = get_dpi_scale_for_hwnd(native_handle);
+				}
+				catch (...)
+				{
+					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+				}
+
+#else  // #ifdef _WINDOWS_
+				m_dpi_scale = 1.0f; // TODO
+#endif // #else // #ifdef _WINDOWS_
+				return {};
+			}
+
 			[[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>
 			{
-				m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(m_window.get()));
-
+				MU_LEAF_CHECK(update_dpi());
 				MU_LEAF_CHECK(m_imgui_renderer->new_frame(m_display_size[0], m_display_size[1], Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_dpi_scale));
 				return {};
 			}
@@ -331,9 +341,8 @@ namespace mu
 
 		struct gfx_window_impl : public gfx_window
 		{
-			std::shared_ptr<glfw_system> m_glfw_system;
-			std::shared_ptr<GLFWwindow>	 m_window;
-
+			std::shared_ptr<glfw_system>			  m_glfw_system;
+			std::shared_ptr<GLFWwindow>				  m_window;
 			std::shared_ptr<diligent_window>		  m_diligent_window;
 			std::shared_ptr<diligent_globals>		  m_renderer_globals;
 			std::shared_ptr<Diligent::imgui_renderer> m_imgui_renderer;
@@ -342,13 +351,32 @@ namespace mu
 			std::array<int, 2> m_display_size{0, 0};
 			float			   m_dpi_scale{1.0f};
 
+			[[nodiscard]] auto update_dpi() noexcept -> mu::leaf::result<void>
+			{
+#ifdef _WINDOWS_
+				try
+				{
+					auto native_handle = glfwGetWin32Window(m_window.get());
+					m_dpi_scale		   = get_dpi_scale_for_hwnd(native_handle);
+				}
+				catch (...)
+				{
+					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+				}
+
+#else  // #ifdef _WINDOWS_
+				m_dpi_scale = 1.0f; // TODO
+#endif // #else // #ifdef _WINDOWS_
+				return {};
+			}
+
 			gfx_window_impl(std::shared_ptr<glfw_system> sys, int posX, int posY, int sizeX, int sizeY)
 				: m_glfw_system(sys)
 				, m_application_state(std::make_shared<gfx_application_state>())
 			{
 				MU_LEAF_AUTO_THROW(new_window, create_window(posX, posY, sizeX, sizeY));
-				glfwSetWindowUserPointer(new_window, this);
-				m_window = std::shared_ptr<GLFWwindow>(
+
+				auto wnd = std::shared_ptr<GLFWwindow>(
 					new_window,
 					[](GLFWwindow* w) -> void
 					{
@@ -358,16 +386,39 @@ namespace mu
 						}
 						catch (...)
 						{
+							MU_LEAF_LOG_ERROR(mu::gfx_error::not_specified{});
 						}
 					});
+				glfwSetWindowUserPointer(new_window, this);
+
+				m_window = std::move(wnd);
+				update_dpi();
 			}
 
 			virtual ~gfx_window_impl()
 			{
-				m_application_state->make_current();
-				ImGuiViewport* main_viewport	= ImGui::GetMainViewport();
-				main_viewport->PlatformUserData = nullptr;
-				main_viewport->PlatformHandle	= nullptr;
+				if (auto res = m_application_state->make_current()) [[likely]]
+				{
+					ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+					for (int n = 1; n < platform_io.Viewports.Size; n++)
+					{
+						ImGuiViewport* viewport = platform_io.Viewports[n];
+						IM_ASSERT(viewport);
+
+						auto cw					   = static_cast<gfx_child_window*>(viewport->PlatformUserData);
+						viewport->PlatformUserData = nullptr;
+						viewport->PlatformHandle   = nullptr;
+						delete cw;
+					}
+
+					ImGuiViewport* main_viewport	= ImGui::GetMainViewport();
+					main_viewport->PlatformUserData = nullptr;
+					main_viewport->PlatformHandle	= nullptr;
+				}
+				else
+				{
+					MU_LEAF_LOG_ERROR(mu::gfx_error::not_specified{});
+				}
 
 				try
 				{
@@ -387,23 +438,31 @@ namespace mu
 					MU_LEAF_LOG_ERROR(mu::gfx_error::not_specified{});
 				}
 
-				if (m_renderer_globals) [[likely]]
+				try
 				{
 					m_renderer_globals.reset();
 				}
+				catch (...)
+				{
+					MU_LEAF_LOG_ERROR(mu::gfx_error::not_specified{});
+				}
 
-				if (m_window) [[likely]]
+				try
 				{
 					m_window.reset();
-					m_window = nullptr;
+				}
+				catch (...)
+				{
+					MU_LEAF_LOG_ERROR(mu::gfx_error::not_specified{});
 				}
 			}
 
-			auto create_window(int posX, int posY, int sizeX, int sizeY) noexcept -> leaf::result<GLFWwindow*>
+			[[nodiscard]] auto create_window(int posX, int posY, int sizeX, int sizeY) noexcept -> leaf::result<GLFWwindow*>
 			try
 			{
 				glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 				glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+
 				if (auto wnd = glfwCreateWindow(sizeX, sizeY, "", NULL, NULL); wnd != nullptr) [[likely]]
 				{
 					try
@@ -411,7 +470,7 @@ namespace mu
 						glfwSetWindowPos(wnd, posX, posY);
 						glfwGetFramebufferSize(wnd, &m_display_size[0], &m_display_size[1]);
 						glfwSetWindowUserPointer(wnd, this);
-						m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(wnd));
+
 						return wnd;
 					}
 					catch (...)
@@ -428,7 +487,7 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			auto wants_to_close() noexcept -> leaf::result<bool>
+			[[nodiscard]] auto wants_to_close() noexcept -> leaf::result<bool>
 			try
 			{
 				return glfwWindowShouldClose(m_window.get()) != 0;
@@ -438,7 +497,7 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			auto show() noexcept -> leaf::result<void>
+			[[nodiscard]] auto show() noexcept -> leaf::result<void>
 			try
 			{
 				glfwShowWindow(m_window.get());
@@ -449,7 +508,7 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			auto init_glfw_resources() noexcept -> leaf::result<void>
+			[[nodiscard]] auto init_glfw_resources() noexcept -> leaf::result<void>
 			{
 				try
 				{
@@ -532,8 +591,6 @@ namespace mu
 
 			[[nodiscard]] auto init_window() noexcept -> leaf::result<void>
 			{
-				MU_LEAF_CHECK(m_application_state->make_current());
-
 				try
 				{
 					// Setup backend capabilities flags
@@ -612,8 +669,13 @@ namespace mu
 						if (ImGuiViewport* main_viewport = ImGui::GetMainViewport(); main_viewport != viewport)
 						{
 							auto			  main_window = static_cast<gfx_window_impl*>(main_viewport->PlatformUserData);
-							gfx_child_window* cw =
-								new gfx_child_window(main_window->m_application_state, viewport, (int)viewport->Pos.x, (int)viewport->Pos.y, (int)viewport->Size.x, (int)viewport->Size.y);
+							gfx_child_window* cw		  = new gfx_child_window(
+								 main_window->m_application_state,
+								 viewport,
+								 (int)viewport->Pos.x,
+								 (int)viewport->Pos.y,
+								 (int)viewport->Size.x,
+								 (int)viewport->Size.y);
 							viewport->PlatformUserData = cw;
 							viewport->PlatformHandle   = cw->m_window.get();
 							// viewport->RendererUserData
@@ -755,9 +817,9 @@ namespace mu
 				{
 					try
 					{
-						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window.get())}, m_renderer_globals);
+						MU_LEAF_CHECK(m_application_state->make_current());
 
-						m_application_state->make_current();
+						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window.get())}, m_renderer_globals);
 
 						const auto& swapchain_desc = m_diligent_window->m_swap_chain->GetDesc();
 						m_imgui_renderer		   = std::make_shared<Diligent::imgui_renderer>(
@@ -781,7 +843,7 @@ namespace mu
 				return {};
 			}
 
-			virtual auto render(ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
+			[[nodiscard]] auto render(ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 			{
 				MU_LEAF_CHECK(m_diligent_window->clear());
 				MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(m_diligent_window->m_immediate_context, draw_data));
@@ -1066,10 +1128,10 @@ namespace mu
 				return {};
 			}
 
-			virtual auto begin_frame() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>
 			{
-				m_application_state->make_current();
-				
+				MU_LEAF_CHECK(m_application_state->make_current());
+
 				MU_LEAF_CHECK(init_resources());
 
 				if (m_diligent_window) [[likely]]
@@ -1094,7 +1156,7 @@ namespace mu
 						if (!(viewport->Flags & ImGuiViewportFlags_Minimized))
 						{
 							auto wnd = static_cast<gfx_child_window*>(viewport->PlatformUserData);
-							wnd->begin_frame(m_diligent_window->m_globals, m_imgui_renderer->m_shared_resources);
+							MU_LEAF_CHECK(wnd->begin_frame(m_diligent_window->m_globals, m_imgui_renderer->m_shared_resources));
 						}
 					}
 
@@ -1106,7 +1168,7 @@ namespace mu
 				}
 			}
 
-			virtual auto end_frame() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>
 			try
 			{
 				return {};
@@ -1116,17 +1178,17 @@ namespace mu
 				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
 			}
 
-			virtual auto begin_imgui() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>
 			{
 				try
 				{
-					m_application_state->make_current();
-					
+					MU_LEAF_CHECK(m_application_state->make_current());
+
 					MU_LEAF_CHECK(new_frame());
 
 					ImGuiViewport* main_viewport = ImGui::GetMainViewport();
 
-					m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(m_window.get()));
+					MU_LEAF_CHECK(update_dpi());
 
 					MU_LEAF_CHECK(m_imgui_renderer->new_frame(m_display_size[0], m_display_size[1], Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_dpi_scale));
 
@@ -1139,7 +1201,7 @@ namespace mu
 						if (!(viewport->Flags & ImGuiViewportFlags_Minimized))
 						{
 							auto wnd = static_cast<gfx_child_window*>(viewport->PlatformUserData);
-							wnd->begin_imgui();
+							MU_LEAF_CHECK(wnd->begin_imgui());
 						}
 					}
 
@@ -1152,12 +1214,12 @@ namespace mu
 				}
 			}
 
-			virtual auto end_imgui() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto end_imgui() noexcept -> mu::leaf::result<void>
 			{
 				try
 				{
-					m_application_state->make_current();
-					
+					MU_LEAF_CHECK(m_application_state->make_current());
+
 					ImGui::Render();
 					ImGui::EndFrame();
 					ImGui::UpdatePlatformWindows();
@@ -1173,7 +1235,7 @@ namespace mu
 						if (!(viewport->Flags & ImGuiViewportFlags_Minimized))
 						{
 							auto wnd = static_cast<gfx_child_window*>(viewport->PlatformUserData);
-							wnd->render(m_renderer_globals->m_immediate_context, viewport->DrawData);
+							MU_LEAF_CHECK(wnd->render(m_renderer_globals->m_immediate_context, viewport->DrawData));
 						}
 					}
 
@@ -1185,10 +1247,10 @@ namespace mu
 				}
 			}
 
-			auto present() noexcept -> mu::leaf::result<void>
+			[[nodiscard]] auto present() noexcept -> mu::leaf::result<void>
 			{
-				m_application_state->make_current();
-				
+				MU_LEAF_CHECK(m_application_state->make_current());
+
 				ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
 				if (m_diligent_window && m_diligent_window->m_swap_chain)
@@ -1204,7 +1266,7 @@ namespace mu
 					if (!(viewport->Flags & ImGuiViewportFlags_Minimized))
 					{
 						auto wnd = static_cast<gfx_child_window*>(viewport->PlatformUserData);
-						wnd->present();
+						MU_LEAF_CHECK(wnd->present());
 					}
 				}
 				return {};
@@ -1219,38 +1281,17 @@ namespace mu
 	{
 		struct gfx_impl : public gfx_interface
 		{
-			std::weak_ptr<glfw_system> m_glfw_system;
+			std::shared_ptr<glfw_system>				m_glfw_system;
+			std::vector<std::weak_ptr<gfx_window_impl>> m_windows;
 
-			[[nodiscard]] auto get_system_ref() noexcept -> mu::leaf::result<std::shared_ptr<glfw_system>>
-			try
-			{
-				if (m_glfw_system.expired()) [[unlikely]]
-				{
-					auto new_inst = std::make_shared<glfw_system>();
-					m_glfw_system = new_inst;
-					return new_inst;
-				}
-				else
-				{
-					return m_glfw_system.lock();
-				}
-			}
-			catch (...)
-			{
-				return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
-			}
-
-			gfx_impl() = default;
+			gfx_impl() : m_glfw_system(std::make_shared<glfw_system>()) { }
 
 			virtual ~gfx_impl() = default;
-
-			std::vector<std::weak_ptr<gfx_window_impl>> m_windows;
 
 			virtual auto open_window(int posX, int posY, int sizeX, int sizeY) noexcept -> mu::leaf::result<std::shared_ptr<gfx_window>>
 			try
 			{
-				MU_LEAF_AUTO(system_ref, get_system_ref());
-				auto new_window = std::make_shared<gfx_window_impl>(system_ref, posX, posY, sizeX, sizeY);
+				auto new_window = std::make_shared<gfx_window_impl>(m_glfw_system, posX, posY, sizeX, sizeY);
 				m_windows.push_back(std::static_pointer_cast<gfx_window_impl>(new_window));
 				return new_window;
 			}
@@ -1262,15 +1303,8 @@ namespace mu
 			virtual auto pump() noexcept -> mu::leaf::result<void>
 			try
 			{
-				if (!m_glfw_system.expired()) [[likely]]
-				{
-					glfwPollEvents();
-					return {};
-				}
-				else
-				{
-					return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
-				}
+				glfwPollEvents();
+				return {};
 			}
 			catch (...)
 			{

@@ -138,8 +138,8 @@ namespace mu
 
 	struct diligent_child_window
 	{
-		std::shared_ptr<diligent_window>			  m_parent;
 		Diligent::RefCntAutoPtr<Diligent::ISwapChain> m_swap_chain;
+		std::shared_ptr<diligent_globals>			  m_globals;
 
 		[[nodiscard]] auto create_resources(int sizeX, int sizeY) noexcept -> mu::leaf::result<void>
 		try
@@ -164,14 +164,14 @@ namespace mu
 			// Note that Present() unbinds the back buffer if it is set as render target.
 			Diligent::ITextureView* last_backbuffer_rtv	 = m_swap_chain->GetCurrentBackBufferRTV();
 			Diligent::ITextureView* last_depthbuffer_rtv = m_swap_chain->GetDepthBufferDSV();
-			m_parent->m_immediate_context->SetRenderTargets(1, &last_backbuffer_rtv, last_depthbuffer_rtv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_globals->m_immediate_context->SetRenderTargets(1, &last_backbuffer_rtv, last_depthbuffer_rtv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
 			// Clear the back buffer
 			const float clear_color[] = {0.350f, 0.350f, 0.350f, 1.000f};
 
 			// Let the engine perform required state transitions
-			m_parent->m_immediate_context->ClearRenderTarget(last_backbuffer_rtv, clear_color, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-			m_parent->m_immediate_context->ClearDepthStencil(last_depthbuffer_rtv, Diligent::CLEAR_DEPTH_FLAG, 1.f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_globals->m_immediate_context->ClearRenderTarget(last_backbuffer_rtv, clear_color, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+			m_globals->m_immediate_context->ClearDepthStencil(last_depthbuffer_rtv, Diligent::CLEAR_DEPTH_FLAG, 1.f, 0, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
 			return {};
 		}
@@ -191,11 +191,11 @@ namespace mu
 			return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
 		}
 
-		diligent_child_window(Diligent::Win32NativeWindow native_wnd, std::shared_ptr<diligent_window> parent) : m_parent(parent)
+		diligent_child_window(Diligent::Win32NativeWindow native_wnd, std::shared_ptr<diligent_globals> globals) : m_globals(globals)
 		{
 			Diligent::SwapChainDesc swapchain_desc;
-			m_parent->m_globals->m_engine_factory->CreateSwapChainD3D12(
-				m_parent->m_globals->m_device, m_parent->m_immediate_context, swapchain_desc, Diligent::FullScreenModeDesc{}, native_wnd, &m_swap_chain);
+			m_globals->m_engine_factory->CreateSwapChainD3D12(
+				m_globals->m_device, m_globals->m_immediate_context, swapchain_desc, Diligent::FullScreenModeDesc{}, native_wnd, &m_swap_chain);
 		}
 
 		~diligent_child_window()
@@ -203,7 +203,7 @@ namespace mu
 			try
 			{
 				m_swap_chain.Release();
-				m_parent.reset();
+				m_globals.reset();
 			}
 			catch (...)
 			{

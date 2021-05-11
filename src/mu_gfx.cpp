@@ -89,6 +89,7 @@ namespace mu
 
 			std::array<int, 2> m_display_size{0, 0};
 			float			   m_dpi_scale{1.0f};
+			bool			   m_ready{false};
 
 			gfx_child_window(std::shared_ptr<gfx_application_state> application_state, ImGuiViewport* viewport, int posX, int posY, int sizeX, int sizeY)
 				: m_application_state(application_state)
@@ -302,6 +303,7 @@ namespace mu
 				{
 					try
 					{
+						m_ready = true;
 						glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
 					}
 					catch (...)
@@ -321,7 +323,7 @@ namespace mu
 
 			[[nodiscard]] auto render(Diligent::IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 			{
-				if (m_diligent_window)
+				if (m_ready)
 				{
 					MU_LEAF_CHECK(m_diligent_window->clear());
 					MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(ctx, draw_data));
@@ -331,9 +333,10 @@ namespace mu
 
 			[[nodiscard]] auto present() noexcept -> mu::leaf::result<void>
 			{
-				if (m_diligent_window && m_diligent_window->m_swap_chain)
+				if (m_ready)
 				{
 					MU_LEAF_CHECK(m_diligent_window->present());
+					m_ready = false;
 				}
 				return {};
 			}
@@ -678,13 +681,6 @@ namespace mu
 								 (int)viewport->Size.y);
 							viewport->PlatformUserData = cw;
 							viewport->PlatformHandle   = cw->m_window.get();
-							// viewport->RendererUserData
-							// viewport->PlatformHandleRaw
-							// viewport->PlatformRequestMove
-							// viewport->PlatformRequestResize
-							// viewport->PlatformRequestClose
-							// viewport->PlatformUserData = this;
-							// viewport->PlatformHandle	= m_window.get();
 						}
 					};
 

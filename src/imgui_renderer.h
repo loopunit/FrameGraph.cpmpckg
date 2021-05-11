@@ -52,23 +52,12 @@ namespace Diligent
 
 	struct imgui_renderer
 	{
-		imgui_renderer(
-			IRenderDevice* render_device, TEXTURE_FORMAT back_buffer_fmt, TEXTURE_FORMAT depth_buffer_fmt, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size,
-			float scale);
-		
-		imgui_renderer(
-			std::shared_ptr<imgui_shared_resources> shared_resources, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size,
-			float scale);
+		imgui_renderer(std::shared_ptr<imgui_shared_resources> shared_resources, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size, float scale);
 
 		~imgui_renderer();
 
-		[[nodiscard]] auto new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pretransform, float scale) noexcept
+		[[nodiscard]] auto render_draw_data(SURFACE_TRANSFORM surface_pre_transform, Uint32 render_surface_width, Uint32 render_surface_height, IDeviceContext* ctx, ImDrawData* draw_data) noexcept
 			-> mu::leaf::result<void>;
-		[[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>;
-		[[nodiscard]] auto render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>;
-		[[nodiscard]] auto create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>;
-
-		inline float4 transform_clip_rect(const ImVec2& display_size, const float4& rect) const;
 
 		std::shared_ptr<imgui_shared_resources> m_shared_resources;
 
@@ -77,9 +66,5 @@ namespace Diligent
 
 		Uint32			  m_vertex_buffer_size	  = 0;
 		Uint32			  m_index_buffer_size	  = 0;
-		Uint32			  m_render_surface_width  = 0;
-		Uint32			  m_render_surface_height = 0;
-		SURFACE_TRANSFORM m_surface_pre_transform = SURFACE_TRANSFORM_IDENTITY;
-		//float			  m_scale				  = 1.0f;
 	};
 } // namespace Diligent

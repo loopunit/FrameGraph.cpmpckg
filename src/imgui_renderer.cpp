@@ -277,8 +277,8 @@ namespace Diligent
 		MU_LEAF_CHECK(create_fonts_texture(scale));
 
 		return {};
-	}	
-		
+	}
+
 	auto imgui_shared_resources::create_device_objects() noexcept -> mu::leaf::result<void>
 	{
 		ShaderCreateInfo shader_ci;
@@ -464,9 +464,9 @@ namespace Diligent
 
 namespace Diligent
 {
-	float4 imgui_renderer::transform_clip_rect(const ImVec2& display_size, const float4& rect) const
+	inline float4 transform_clip_rect(SURFACE_TRANSFORM surface_pre_transform, const ImVec2& display_size, const float4& rect)
 	{
-		switch (m_surface_pre_transform)
+		switch (surface_pre_transform)
 		{
 		case SURFACE_TRANSFORM_IDENTITY:
 			return rect;
@@ -577,68 +577,16 @@ namespace Diligent
 
 namespace Diligent
 {
-	imgui_renderer::imgui_renderer(
-		IRenderDevice* device,
-		TEXTURE_FORMAT back_buffer_fmt,
-		TEXTURE_FORMAT depth_buffer_fmt,
-		Uint32		   initial_vertex_buffer_size,
-		Uint32		   initial_index_buffer_size,
-		float		   scale)
-		: m_shared_resources(std::make_shared<imgui_shared_resources>(device, back_buffer_fmt, depth_buffer_fmt, scale))
-		, m_vertex_buffer_size{initial_vertex_buffer_size}
-		, m_index_buffer_size{initial_index_buffer_size}
-	{
-		IMGUI_CHECKVERSION();
-		ImGuiIO& io			   = ImGui::GetIO();
-		io.BackendRendererName = "imgui_renderer";
-		io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset; // We can honor the ImDrawCmd::VtxOffset field, allowing for large meshes.
-
-		MU_LEAF_RETHROW(create_device_objects(scale, true));
-	}
-
 	imgui_renderer::imgui_renderer(std::shared_ptr<imgui_shared_resources> shared_resources, Uint32 initial_vertex_buffer_size, Uint32 initial_index_buffer_size, float scale)
 		: m_shared_resources(shared_resources)
 		, m_vertex_buffer_size{initial_vertex_buffer_size}
 		, m_index_buffer_size{initial_index_buffer_size}
 	{
-		MU_LEAF_RETHROW(create_device_objects(scale, false));
 	}
 
 	imgui_renderer::~imgui_renderer() { }
 
-	auto imgui_renderer::new_frame(Uint32 render_surface_width, Uint32 render_surface_height, SURFACE_TRANSFORM surface_pre_transform, float scale) noexcept
-		-> mu::leaf::result<void>
-	{
-		MU_LEAF_CHECK(create_device_objects(scale, false));
-
-		m_render_surface_width	= render_surface_width;
-		m_render_surface_height = render_surface_height;
-		m_surface_pre_transform = surface_pre_transform;
-
-		ImGuiIO& io		= ImGui::GetIO();
-		io.Fonts->TexID = (ImTextureID)m_shared_resources->m_font_srv;
-
-		return {};
-	}
-
-	auto imgui_renderer::end_frame() noexcept -> mu::leaf::result<void>
-	{
-		return {};
-	}
-
-	auto imgui_renderer::create_device_objects(float scale, bool force) noexcept -> mu::leaf::result<void>
-	{
-		if (force)
-		{
-			m_vertex_buffer.Release();
-			m_index_buffer.Release();
-		}
-
-		MU_LEAF_CHECK(m_shared_resources->create_device_objects(scale, force));
-		return {};
-	}
-
-	auto imgui_renderer::render_draw_data(IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
+	auto imgui_renderer::render_draw_data(SURFACE_TRANSFORM surface_pre_transform, Uint32 render_surface_width, Uint32 render_surface_height, IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 	{
 		// Avoid rendering when minimized
 		if (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f)
@@ -711,7 +659,7 @@ namespace Diligent
 			float4x4 projection{2.0f / (R - L), 0.0f, 0.0f, 0.0f, 0.0f, 2.0f / (T - B), 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.0f, (R + L) / (L - R), (T + B) / (B - T), 0.5f, 1.0f};
 
 			// Bake pre-transform into projection
-			switch (m_surface_pre_transform)
+			switch (surface_pre_transform)
 			{
 			case SURFACE_TRANSFORM_IDENTITY:
 				// Nothing to do
@@ -764,16 +712,16 @@ namespace Diligent
 			ctx->SetBlendFactors(blend_factor);
 
 			Viewport vp;
-			vp.Width	= static_cast<float>(m_render_surface_width) * draw_data->FramebufferScale.x;
-			vp.Height	= static_cast<float>(m_render_surface_height) * draw_data->FramebufferScale.y;
+			vp.Width	= static_cast<float>(render_surface_width) * draw_data->FramebufferScale.x;
+			vp.Height	= static_cast<float>(render_surface_height) * draw_data->FramebufferScale.y;
 			vp.MinDepth = 0.0f;
 			vp.MaxDepth = 1.0f;
 			vp.TopLeftX = vp.TopLeftY = 0;
 			ctx->SetViewports(
 				1,
 				&vp,
-				static_cast<Uint32>(m_render_surface_width * draw_data->FramebufferScale.x),
-				static_cast<Uint32>(m_render_surface_height * draw_data->FramebufferScale.y));
+				static_cast<Uint32>(render_surface_width * draw_data->FramebufferScale.x),
+				static_cast<Uint32>(render_surface_height * draw_data->FramebufferScale.y));
 		};
 
 		setup_render_state();
@@ -814,7 +762,7 @@ namespace Diligent
 					};
 
 					// Apply pretransform
-					clip_rect = transform_clip_rect(draw_data->DisplaySize, clip_rect);
+					clip_rect = transform_clip_rect(surface_pre_transform, draw_data->DisplaySize, clip_rect);
 
 					Rect r{
 						static_cast<Int32>(clip_rect.x), static_cast<Int32>(clip_rect.y), static_cast<Int32>(clip_rect.z),
@@ -823,8 +771,8 @@ namespace Diligent
 					ctx->SetScissorRects(
 						1,
 						&r,
-						static_cast<Uint32>(m_render_surface_width * draw_data->FramebufferScale.x),
-						static_cast<Uint32>(m_render_surface_height * draw_data->FramebufferScale.y));
+						static_cast<Uint32>(render_surface_width * draw_data->FramebufferScale.x),
+						static_cast<Uint32>(render_surface_height * draw_data->FramebufferScale.y));
 
 					// Bind texture
 					auto* texture_view = reinterpret_cast<ITextureView*>(im_cmd->TextureId);

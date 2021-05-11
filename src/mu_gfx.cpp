@@ -84,7 +84,7 @@ namespace mu
 		{
 			std::shared_ptr<gfx_application_state>	  m_application_state;
 			std::shared_ptr<GLFWwindow>				  m_window;
-			std::shared_ptr<diligent_window>	  m_diligent_window;
+			std::shared_ptr<diligent_window>		  m_diligent_window;
 			std::shared_ptr<Diligent::imgui_renderer> m_imgui_renderer;
 
 			std::array<int, 2> m_display_size{0, 0};
@@ -107,6 +107,14 @@ namespace mu
 #else  // #ifdef _WINDOWS_
 				m_dpi_scale = 1.0f; // TODO
 #endif // #else // #ifdef _WINDOWS_
+				try
+				{
+					glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
+				}
+				catch (...)
+				{
+					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
+				}
 				return {};
 			}
 
@@ -198,7 +206,7 @@ namespace mu
 					});
 
 				m_window = std::move(wnd);
-				
+
 				MU_LEAF_RETHROW(update_dpi());
 			}
 
@@ -248,9 +256,7 @@ namespace mu
 					try
 					{
 						glfwSetWindowPos(wnd, posX, posY);
-						glfwGetFramebufferSize(wnd, &m_display_size[0], &m_display_size[1]);
 						glfwSetWindowUserPointer(wnd, this);
-						m_dpi_scale = get_dpi_scale_for_hwnd(glfwGetWin32Window(wnd));
 						return wnd;
 					}
 					catch (...)
@@ -292,23 +298,13 @@ namespace mu
 				-> mu::leaf::result<void>
 			{
 				MU_LEAF_CHECK(update_dpi());
-				
+
 				MU_LEAF_CHECK(init_resources(globals, shared_resources));
 
 				if (m_diligent_window) [[likely]]
 				{
-					try
-					{
-						m_ready = true;
-						glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
-					}
-					catch (...)
-					{
-						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-					}
-
+					m_ready = true;
 					MU_LEAF_CHECK(m_diligent_window->create_resources(m_display_size[0], m_display_size[1]));
-
 					return {};
 				}
 				else
@@ -321,14 +317,7 @@ namespace mu
 			{
 				if (m_ready)
 				{
-					try
-					{
-						glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
-					}
-					catch (...)
-					{
-						return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
-					}
+					MU_LEAF_CHECK(update_dpi());
 					MU_LEAF_CHECK(m_diligent_window->clear());
 					MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_display_size[0], m_display_size[1], ctx, draw_data));
 				}
@@ -375,6 +364,15 @@ namespace mu
 #else  // #ifdef _WINDOWS_
 				m_dpi_scale = 1.0f; // TODO
 #endif // #else // #ifdef _WINDOWS_
+				try
+				{
+					glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
+				}
+				catch (...)
+				{
+					return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
+				}
+
 				return {};
 			}
 
@@ -400,6 +398,7 @@ namespace mu
 				glfwSetWindowUserPointer(new_window, this);
 
 				m_window = std::move(wnd);
+
 				MU_LEAF_RETHROW(update_dpi());
 			}
 
@@ -476,9 +475,7 @@ namespace mu
 					try
 					{
 						glfwSetWindowPos(wnd, posX, posY);
-						glfwGetFramebufferSize(wnd, &m_display_size[0], &m_display_size[1]);
 						glfwSetWindowUserPointer(wnd, this);
-
 						return wnd;
 					}
 					catch (...)
@@ -851,17 +848,14 @@ namespace mu
 
 			[[nodiscard]] auto render(ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 			{
-				try
-				{
-					glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
-				}
-				catch (...)
-				{
-					return MU_LEAF_NEW_ERROR(gfx_error::not_specified{});
-				}
-
+				MU_LEAF_CHECK(update_dpi());
 				MU_LEAF_CHECK(m_diligent_window->clear());
-				MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_display_size[0], m_display_size[1], m_renderer_globals->m_immediate_context, draw_data));
+				MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(
+					Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL,
+					m_display_size[0],
+					m_display_size[1],
+					m_renderer_globals->m_immediate_context,
+					draw_data));
 				return {};
 			}
 
@@ -1147,19 +1141,12 @@ namespace mu
 			{
 				MU_LEAF_CHECK(m_application_state->make_current());
 
+				MU_LEAF_CHECK(update_dpi());
+				
 				MU_LEAF_CHECK(init_resources());
 
 				if (m_diligent_window) [[likely]]
 				{
-					try
-					{
-						glfwGetFramebufferSize(m_window.get(), &m_display_size[0], &m_display_size[1]);
-					}
-					catch (...)
-					{
-						return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-					}
-
 					MU_LEAF_CHECK(m_diligent_window->create_resources(m_display_size[0], m_display_size[1]));
 
 					ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();

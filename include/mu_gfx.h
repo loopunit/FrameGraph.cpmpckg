@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mu_stdlib.h>
+#include <mu_stdlib_taskflow.h>
 
 #include <imgui.h>
 
@@ -36,7 +37,7 @@ namespace mu
 		{
 			return shared_from_this();
 		}
-		
+
 		gfx_window()		  = default;
 		virtual ~gfx_window() = default;
 
@@ -46,6 +47,12 @@ namespace mu
 		virtual [[nodiscard]] auto begin_imgui() noexcept -> mu::leaf::result<void>	   = 0;
 		virtual [[nodiscard]] auto end_imgui() noexcept -> mu::leaf::result<void>	   = 0;
 		virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>	   = 0;
+		virtual [[nodiscard]] auto make_current() noexcept -> mu::leaf::result<void>   = 0;
+
+		virtual [[nodiscard]] auto begin_frame(tf::Subflow& subflow) noexcept -> mu::leaf::result<void> = 0;
+		virtual [[nodiscard]] auto begin_imgui(tf::Subflow& subflow) noexcept -> mu::leaf::result<void> = 0;
+		virtual [[nodiscard]] auto end_imgui(tf::Subflow& subflow) noexcept -> mu::leaf::result<void>	= 0;
+		virtual [[nodiscard]] auto end_frame(tf::Subflow& subflow) noexcept -> mu::leaf::result<void>	= 0;
 
 		template<typename T_FUNC>
 		[[nodiscard]] auto do_frame(T_FUNC func) noexcept -> mu::leaf::result<void>

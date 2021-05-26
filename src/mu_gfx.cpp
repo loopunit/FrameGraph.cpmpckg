@@ -1144,7 +1144,7 @@ namespace mu
 				return {};
 			}
 
-			virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto begin_frame_async() noexcept -> mu::leaf::result<void>
 			{
 				MU_LEAF_CHECK(m_application_state->make_current());
 
@@ -1218,20 +1218,6 @@ namespace mu
 
 					MU_LEAF_CHECK(update_dpi());
 
-					return {};
-				}
-				catch (...)
-				{
-					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-				}
-			}
-
-			virtual [[nodiscard]] auto begin_imgui_async() noexcept -> mu::leaf::result<void>
-			{
-				try
-				{
-					MU_LEAF_CHECK(m_application_state->make_current());
-
 					MU_LEAF_CHECK(m_imgui_shared_resources->create_device_objects(m_dpi_scale, false));
 					ImGuiIO& io		= ImGui::GetIO();
 					io.Fonts->TexID = (ImTextureID)m_imgui_shared_resources->m_font_srv;
@@ -1245,7 +1231,7 @@ namespace mu
 				}
 			}
 
-			virtual [[nodiscard]] auto end_imgui_async_1() noexcept -> mu::leaf::result<void>
+			virtual [[nodiscard]] auto end_imgui_async() noexcept -> mu::leaf::result<void>
 			{
 				try
 				{
@@ -1268,20 +1254,6 @@ namespace mu
 					MU_LEAF_CHECK(m_application_state->make_current());
 
 					ImGui::UpdatePlatformWindows();
-
-					return {};
-				}
-				catch (...)
-				{
-					return MU_LEAF_NEW_ERROR(mu::gfx_error::not_specified{});
-				}
-			}
-
-			virtual [[nodiscard]] auto end_imgui_async_2() noexcept -> mu::leaf::result<void>
-			{
-				try
-				{
-					MU_LEAF_CHECK(m_application_state->make_current());
 
 					// ImGuiIO& io = ImGui::GetIO();
 					MU_LEAF_CHECK(render(ImGui::GetDrawData()));

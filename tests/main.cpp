@@ -149,7 +149,7 @@ static auto app_test_frame(tf::Executor* executor, app_stask_state* ts) noexcept
 						{
 							auto  n	   = ts->m_window_task_counters[0]++;
 							auto& wwnd = ts->windows[n];
-							MU_LEAF_CHECK(wwnd->begin_frame());
+							MU_LEAF_CHECK(wwnd->begin_frame_async());
 							return {};
 						}();
 						!func_error) [[unlikely]]
@@ -167,11 +167,6 @@ static auto app_test_frame(tf::Executor* executor, app_stask_state* ts) noexcept
 			auto  n	   = ts->m_window_task_counters[1]++;
 			auto& wwnd = ts->windows[n];
 			MU_LEAF_CHECK(wwnd->begin_imgui_sync());
-		}
-		{
-			auto  n	   = ts->m_window_task_counters[2]++;
-			auto& wwnd = ts->windows[n];
-			MU_LEAF_CHECK(wwnd->begin_imgui_async());
 		}
 		{
 			auto  n	   = ts->m_window_task_counters[3]++;
@@ -192,7 +187,7 @@ static auto app_test_frame(tf::Executor* executor, app_stask_state* ts) noexcept
 							{
 								auto  n	   = ts->m_window_task_counters[4]++;
 								auto& wwnd = ts->windows[n];
-								MU_LEAF_CHECK(wwnd->end_imgui_async_1());
+								MU_LEAF_CHECK(wwnd->end_imgui_async());
 							}
 							return {};
 						}();
@@ -211,11 +206,6 @@ static auto app_test_frame(tf::Executor* executor, app_stask_state* ts) noexcept
 			auto  n	   = ts->m_window_task_counters[5]++;
 			auto& wwnd = ts->windows[n];
 			MU_LEAF_CHECK(wwnd->end_imgui_sync());
-		}
-		{
-			auto  n	   = ts->m_window_task_counters[6]++;
-			auto& wwnd = ts->windows[n];
-			MU_LEAF_CHECK(wwnd->end_imgui_async_2());
 		}
 	}
 
@@ -244,75 +234,6 @@ static auto app_test_frame(tf::Executor* executor, app_stask_state* ts) noexcept
 	}
 	executor->run(stage_3).wait();
 
-	//for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	//{
-	//}
-	
-#if 0
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->begin_frame());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->begin_imgui_sync());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->begin_imgui_async());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(imgui_test_frame(wwnd, ts->create_new_window));
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->end_imgui_async_1());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->end_imgui_sync());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->end_imgui_async_2());
-	}
-
-	ts->m_window_task_counter = 0;
-	for (auto itor = ts->windows.begin(); itor != ts->windows.end(); ++itor)
-	{
-		auto  n	   = ts->m_window_task_counter++;
-		auto& wwnd = ts->windows[n];
-		MU_LEAF_CHECK(wwnd->end_frame());
-	}
-#endif
 	return {};
 }
 

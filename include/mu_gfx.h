@@ -43,12 +43,10 @@ namespace mu
 
 		virtual [[nodiscard]] auto wants_to_close() noexcept -> mu::leaf::result<bool>	  = 0;
 		virtual [[nodiscard]] auto show() noexcept -> mu::leaf::result<void>			  = 0;
-		virtual [[nodiscard]] auto begin_frame() noexcept -> mu::leaf::result<void>		  = 0;
+		virtual [[nodiscard]] auto begin_frame_async() noexcept -> mu::leaf::result<void>		  = 0;
 		virtual [[nodiscard]] auto begin_imgui_sync() noexcept -> mu::leaf::result<void>  = 0;
-		virtual [[nodiscard]] auto begin_imgui_async() noexcept -> mu::leaf::result<void> = 0;
-		virtual [[nodiscard]] auto end_imgui_async_1() noexcept -> mu::leaf::result<void> = 0;
+		virtual [[nodiscard]] auto end_imgui_async() noexcept -> mu::leaf::result<void> = 0;
 		virtual [[nodiscard]] auto end_imgui_sync() noexcept -> mu::leaf::result<void>	  = 0;
-		virtual [[nodiscard]] auto end_imgui_async_2() noexcept -> mu::leaf::result<void> = 0;
 		virtual [[nodiscard]] auto end_frame() noexcept -> mu::leaf::result<void>		  = 0;
 		virtual [[nodiscard]] auto make_current() noexcept -> mu::leaf::result<void>	  = 0;
 	};

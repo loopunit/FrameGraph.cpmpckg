@@ -22,7 +22,7 @@ namespace mu
 		{
 			int m_glfw_status = GLFW_FALSE;
 
-			//std::weak_ptr<diligent_globals> m_renderer_globals;
+			// std::weak_ptr<diligent_globals> m_renderer_globals;
 
 			glfw_system()
 			{
@@ -243,13 +243,13 @@ namespace mu
 			[[nodiscard]] auto create_window(ImGuiViewport* viewport, int posX, int posY, int sizeX, int sizeY) noexcept -> leaf::result<GLFWwindow*>
 			try
 			{
-				glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-				glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-				glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-				glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
-				glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
-				glfwWindowHint(GLFW_DECORATED, (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? GLFW_FALSE : GLFW_TRUE);
-				glfwWindowHint(GLFW_FLOATING, (viewport->Flags & ImGuiViewportFlags_TopMost) ? GLFW_TRUE : GLFW_FALSE);
+				//glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+				//glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+				//glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+				//glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+				//glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
+				//glfwWindowHint(GLFW_DECORATED, (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? GLFW_FALSE : GLFW_TRUE);
+				//glfwWindowHint(GLFW_FLOATING, (viewport->Flags & ImGuiViewportFlags_TopMost) ? GLFW_TRUE : GLFW_FALSE);
 
 				if (auto wnd = glfwCreateWindow(sizeX, sizeY, "", NULL, NULL); wnd != nullptr) [[likely]]
 				{
@@ -280,10 +280,8 @@ namespace mu
 				{
 					try
 					{
-						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window.get())}, globals);
-
-						const auto& swapchain_desc = m_diligent_window->m_swap_chain->GetDesc();
-						m_imgui_renderer		   = std::make_shared<Diligent::imgui_renderer>(shared_resources, 1024 * 1024, 1024 * 1024, m_dpi_scale);
+						m_diligent_window = std::make_shared<diligent_window>(glfwGetWin32Window(m_window.get()), globals);
+						m_imgui_renderer  = std::make_shared<Diligent::imgui_renderer>(shared_resources, m_dpi_scale);
 					}
 					catch (...)
 					{
@@ -313,13 +311,13 @@ namespace mu
 				}
 			}
 
-			[[nodiscard]] auto render(Diligent::IDeviceContext* ctx, ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
+			[[nodiscard]] auto render(ImDrawData* draw_data) noexcept -> mu::leaf::result<void>
 			{
 				if (m_ready)
 				{
 					MU_LEAF_CHECK(update_dpi());
 					MU_LEAF_CHECK(m_diligent_window->clear());
-					MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL, m_display_size[0], m_display_size[1], ctx, draw_data));
+					MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(m_display_size[0], m_display_size[1], draw_data));
 				}
 				return {};
 			}
@@ -822,16 +820,11 @@ namespace mu
 					{
 						MU_LEAF_CHECK(m_application_state->make_current());
 
-						m_diligent_window = std::make_shared<diligent_window>(Diligent::Win32NativeWindow{glfwGetWin32Window(m_window.get())}, m_renderer_globals);
+						m_diligent_window = std::make_shared<diligent_window>(glfwGetWin32Window(m_window.get()), m_renderer_globals);
 
-						const auto& swapchain_desc = m_diligent_window->m_swap_chain->GetDesc();
-						m_imgui_shared_resources   = std::make_shared<Diligent::imgui_shared_resources>(
-							  m_diligent_window->m_globals->m_device,
-							  swapchain_desc.ColorBufferFormat,
-							  swapchain_desc.DepthBufferFormat,
-							  m_dpi_scale);
+						m_imgui_shared_resources = std::make_shared<Diligent::imgui_shared_resources>(m_dpi_scale);
 
-						m_imgui_renderer = std::make_shared<Diligent::imgui_renderer>(m_imgui_shared_resources, 1024 * 1024, 1024 * 1024, m_dpi_scale);
+						m_imgui_renderer = std::make_shared<Diligent::imgui_renderer>(m_imgui_shared_resources, m_dpi_scale);
 
 						IMGUI_CHECKVERSION();
 						ImGuiIO& io			   = ImGui::GetIO();
@@ -856,10 +849,8 @@ namespace mu
 				MU_LEAF_CHECK(update_dpi());
 				MU_LEAF_CHECK(m_diligent_window->clear());
 				MU_LEAF_CHECK(m_imgui_renderer->render_draw_data(
-					Diligent::SURFACE_TRANSFORM::SURFACE_TRANSFORM_OPTIMAL,
 					m_display_size[0],
 					m_display_size[1],
-					m_renderer_globals->m_immediate_context,
 					draw_data));
 				return {};
 			}
@@ -1106,7 +1097,7 @@ namespace mu
 			[[nodiscard]] auto new_frame_sync() noexcept -> leaf::result<void>
 			{
 				MU_LEAF_CHECK(m_application_state->make_current());
-				
+
 				time::moment delta_time;
 				if (m_application_state->m_timer_ready) [[likely]]
 				{
@@ -1184,7 +1175,7 @@ namespace mu
 
 				ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
 
-				if (m_diligent_window && m_diligent_window->m_swap_chain)
+				if (m_diligent_window && m_diligent_window->ready())
 				{
 					MU_LEAF_CHECK(m_diligent_window->present());
 				}
@@ -1220,7 +1211,7 @@ namespace mu
 
 					MU_LEAF_CHECK(m_imgui_shared_resources->create_device_objects(m_dpi_scale, false));
 					ImGuiIO& io		= ImGui::GetIO();
-					io.Fonts->TexID = (ImTextureID)m_imgui_shared_resources->m_font_srv;
+					io.Fonts->TexID = (ImTextureID)1; //(ImTextureID)m_imgui_shared_resources->m_font_srv;
 
 					ImGui::NewFrame();
 					return {};
@@ -1267,7 +1258,7 @@ namespace mu
 						if (!(viewport->Flags & ImGuiViewportFlags_Minimized))
 						{
 							auto wnd = static_cast<gfx_child_window*>(viewport->PlatformUserData);
-							MU_LEAF_CHECK(wnd->render(m_renderer_globals->m_immediate_context, viewport->DrawData));
+							MU_LEAF_CHECK(wnd->render(viewport->DrawData));
 						}
 					}
 

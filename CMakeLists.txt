@@ -42,7 +42,6 @@ CPMAddPackage(
 ####
 
 CPMAddBaseModule(glfw)
-CPMAddBaseModule(diligent_engine)
 CPMAddBaseModule(mu_stdlib)
 CPMAddBaseModule(imgui)
 
@@ -67,7 +66,7 @@ target_include_directories(mu_gfx PUBLIC $<BUILD_INTERFACE:${mu_gfx_SOURCE_ROOT}
 
 target_link_libraries(mu_gfx
 	PUBLIC
-		cpm_install::glfw cpm_install::diligent_engine cpm_install::mu_stdlib cpm_install::imgui)
+		cpm_install::glfw cpm_install::mu_stdlib cpm_install::imgui)
 
 set_target_properties(mu_gfx PROPERTIES CXX_STANDARD 20)
 
